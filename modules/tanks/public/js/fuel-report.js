@@ -238,13 +238,6 @@ const FuelReport = (() => {
   /* ---------- page ---------- */
 
   async function render(main) {
-    try {
-      if (window.ChengNav && ChengNav.wantsSoundingCards()) {
-        document.documentElement.classList.add('sounding-cards');
-      } else {
-        document.documentElement.classList.remove('sounding-cards');
-      }
-    } catch (e) { /* layout class only */ }
     const bundle = currentBundle();
     let restoredDraft = false;
     /* Edits that never reached the saved copy (the program closed, the page was left in a hurry) come back. */

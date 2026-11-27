@@ -390,6 +390,13 @@ html.bright .sidebar { background: rgba(255,255,255,0.7); }
   }
 }
 .nav { display: flex; flex-direction: column; gap: 6px; }
+.nav-label {
+  margin: 12px 4px 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 /* A long license value wraps instead of being cut at the box edge. */
 .lic-wrap { width: 100%; resize: none; line-height: 1.4; }
 /* Short windows: the menu keeps all 14 entries on screen by tightening them (a Windows laptop at 125-150% display
@@ -684,7 +691,7 @@ html.use-bottom-nav .bn-more-panel {
   border-top: 1px solid var(--line);
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -8px 28px rgba(0,0,0,.35);
-  max-height: min(70vh, 480px);
+  max-height: min(86vh, 760px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }

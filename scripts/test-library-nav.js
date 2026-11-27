@@ -13,10 +13,15 @@ const css = fs.readFileSync(path.join(root, 'apps/web/css/shell.css'), 'utf8');
 
 const nav = html.slice(html.indexOf('id="mainNav"'), html.indexOf('id="sidebarFooter"'));
 const mods = [...nav.matchAll(/data-module="([^"]+)"/g)].map((m) => m[1]);
-assert.deepStrictEqual(mods, [
+const primary = [
   'home', 'voyage', 'tanks', 'bunkerplan', 'bunkeringplan', 'eca', 'eorb',
   'performance', 'spares', 'notes', 'vessel', 'backup', 'license', 'about',
-]);
+];
+assert.deepStrictEqual(mods.slice(0, primary.length), primary);
+const voyagePages = ['summary', 'entry', 'rob', 'consumption', 'voyageabstract', 'rangetotals', 'trends', 'receipts', 'reports', 'reference', 'guide', 'shipsetup', 'voyagesetup', 'setup'];
+const tankPages = ['dashboard', 'fuel-report', 'fuel', 'lube', 'misc', 'water', 'add-tank', 'calibration', 'bunker-after', 'bunker-summary', 'sounding-card', 'report', 'vcf-wcf', 'iso8217', 'settings', 'about'];
+for (const page of voyagePages) assert.ok(nav.includes('data-module="voyage" data-page="' + page + '"'), 'sidebar voyage ' + page);
+for (const page of tankPages) assert.ok(nav.includes('data-module="tanks" data-page="' + page + '"'), 'sidebar tanks ' + page);
 assert.ok(mods.indexOf('notes') === mods.indexOf('vessel') - 1, 'Notes sits above Vessel Setup');
 assert.ok(mods.indexOf('spares') === mods.indexOf('performance') + 1, 'Spares sits below Performance');
 assert.ok(nav.includes('Backup &amp; Sync'), 'sidebar names the page Backup & Sync');
@@ -30,6 +35,22 @@ for (const id of mods) {
 }
 assert.ok(more.includes('data-page="entry"'), 'Noon report is in More');
 assert.ok(more.includes('data-page="fuel-report"'), 'Soundings are in More');
+for (const page of voyagePages) {
+  if (page === 'entry') continue;
+  assert.ok(more.includes('data-module="voyage" data-page="' + page + '"'), 'More voyage ' + page);
+}
+for (const page of tankPages) {
+  assert.ok(more.includes('data-module="tanks" data-page="' + page + '"'), 'More tanks ' + page);
+}
+const moreItems = more.match(/<button type="button" class="bn-more-item"[\s\S]*?<\/button>/g) || [];
+assert.ok(moreItems.length > 14, 'More sheet lists the module pages');
+for (const item of moreItems) assert.ok(item.includes('<svg'), 'every More item has an icon');
+const moreKeys = moreItems.map((item) => {
+  const mod = (item.match(/data-module="([^"]+)"/) || [])[1] || '';
+  const page = (item.match(/data-page="([^"]+)"/) || [])[1] || '';
+  return mod + ':' + page;
+});
+assert.strictEqual(new Set(moreKeys).size, moreKeys.length, 'More sheet has no duplicate links');
 
 assert.ok(backup.includes("title: 'Backup & Sync'"));
 assert.ok(backup.includes('class="backup-lib-row"'));

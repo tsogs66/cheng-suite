@@ -44,7 +44,7 @@ assert.match(index, /aio-shell-nav/);
 assert.match(voyage, /html\.chengaio-embed[\s\S]{0,400}\.bottom-nav/);
 assert.match(fs.readFileSync(path.join(root, 'modules/tanks/public/css/app.css'), 'utf8'), /html\.chengaio-embed \.sidebar/);
 assert.match(fs.readFileSync(path.join(root, 'modules/voyage/www/noon-steps.js'), 'utf8'), /When/);
-assert.match(fs.readFileSync(path.join(root, 'modules/tanks/public/js/fuel-report.js'), 'utf8'), /sounding-cards/);
+assert.match(fs.readFileSync(path.join(root, 'apps/web/css/station-pages.css'), 'utf8'), /table-scroll/);
 assert.match(fs.readFileSync(path.join(root, 'apps/web/css/station.css'), 'utf8'), /html\.station/);
 
 const ChengNav = require(path.join(root, 'apps/web/js/nav-mode.js'));

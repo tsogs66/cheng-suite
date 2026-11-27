@@ -707,7 +707,7 @@ const PAGE_ALIASES = { bunkering: 'bunker-plan' };
  * already turns a request for them into a pointer to that menu.
  */
 const BOOT_PAGES = new Set([
-  'dashboard', 'fuel-report', 'bunker-after', 'bunker-summary', 'report',
+  'dashboard', 'fuel', 'lube', 'misc', 'water', 'fuel-report', 'bunker-after', 'bunker-summary', 'report',
   'sounding-card', 'calibration', 'add-tank', 'vcf-wcf', 'iso8217', 'settings', 'about',
 ]);
 const BOOT_PAGE_ALIASES = { monitoring: 'fuel-report' };

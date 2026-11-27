@@ -1,0 +1,132 @@
+/* Mockup tokens on the live pages. Loaded after each app's own CSS. */
+html.station {
+  --bg: #0b1218;
+  --bg-panel: #13202b;
+  --bg-panel-2: #182838;
+  --bg-card: #182838;
+  --ink: #0b1218;
+  --panel: #13202b;
+  --panel2: #182838;
+  --paper: #e7eef4;
+  --paper-dim: #93a4b3;
+  --text: #e7eef4;
+  --text-dim: #93a4b3;
+  --muted: #93a4b3;
+  --brass: #e2a84a;
+  --accent: #e2a84a;
+  --accent-2: #3cb6c6;
+  --teal: #3cb6c6;
+  --line: #2a3d4e;
+  --line-strong: #3d5568;
+  --border: #2a3d4e;
+  background-color: #0b1218;
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 27px, rgba(90, 150, 170, 0.07) 28px),
+    repeating-linear-gradient(90deg, transparent 0 27px, rgba(90, 150, 170, 0.07) 28px);
+}
+html.station.bright {
+  --bg: #e6e0d2;
+  --bg-panel: #f7f3ea;
+  --ink: #e6e0d2;
+  --panel: #f7f3ea;
+  --paper: #14202b;
+  --text: #14202b;
+  --brass: #8a5410;
+  background-color: #e6e0d2;
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 27px, rgba(90, 70, 40, 0.08) 28px),
+    repeating-linear-gradient(90deg, transparent 0 27px, rgba(90, 70, 40, 0.08) 28px);
+}
+html.station .panel,
+html.station .band,
+html.station .form-panel,
+html.station .unit-box,
+html.station .card,
+html.station .fr-section {
+  background-color: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 8px 16px rgba(0,0,0,.22);
+}
+html.station h2,
+html.station .section-title,
+html.station .section-head h2 {
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+html.station .btn,
+html.station button.primary,
+html.station .home-action,
+html.station .bn-more-item {
+  border: 1px solid #8ea0ae;
+  border-bottom-color: #121920;
+  background-image: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,.02) 42%, rgba(0,0,0,.18));
+  background-color: #243644;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 2px 0 #0c141c;
+}
+html.station .bn-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+html.station .table-scroll,
+html.station .scroll-x {
+  overflow-x: auto;
+  overflow-y: visible;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+html.station table.fr-sheet,
+html.station table.data-table,
+html.station table.tank-table,
+html.station table.excel-table,
+html.station table.calib-table,
+html.station table.leg-table,
+html.station .table-scroll > table,
+html.station .scroll-x > table {
+  min-width: 720px;
+  width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+html.station table.fr-sheet th,
+html.station table.fr-sheet td,
+html.station table.data-table th,
+html.station table.data-table td,
+html.station table.tank-table th,
+html.station table.tank-table td,
+html.station table.excel-table th,
+html.station table.excel-table td,
+html.station .table-scroll > table th,
+html.station .table-scroll > table td,
+html.station .scroll-x > table th,
+html.station .scroll-x > table td {
+  white-space: nowrap;
+}
+html.station table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #13202b;
+}
+html.station.bright table thead th { background: #f7f3ea; }
+html.station table th:first-child,
+html.station table td:first-child,
+html.station table th.fr-tank-name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #13202b;
+}
+html.station.bright table th:first-child,
+html.station.bright table td:first-child,
+html.station.bright table th.fr-tank-name { background: #f7f3ea; }
+html.station table thead th:first-child,
+html.station table thead th.fr-tank-name { z-index: 3; }
+html.station table input,
+html.station table select {
+  min-width: 72px;
+}

@@ -18673,7 +18673,7 @@ function renderTrends(){
 
 const VOYAGE_BOOT_PAGES = new Set([
   'summary', 'reports', 'receipts', 'consumption', 'rangetotals', 'trends',
-  'voyageabstract', 'reference', 'voyagesetup',
+  'voyageabstract', 'reference', 'voyagesetup', 'guide',
 ]);
 function switchTab(pageName){
   if (!pageName || pageName === 'more') return;
@@ -40394,6 +40394,7 @@ document.getElementById('btnFoCopyPassword')?.addEventListener('click', copyFoPa
         }
       }
       else if (qsPage === 'setup') switchTab('setup');
+      else if (qsPage === 'shipsetup') switchTab('data');
       /* Everything else another program may ask for. The bunker-file bar in
          ChEng AIO sends "Voyage receipt" here as ?page=receipts, which none of
          the branches above knew, so it opened the Summary instead. A fixed
@@ -40793,6 +40794,7 @@ function askText(opts){
   later();
   window.alignFields = run;
 })();
+<link rel="stylesheet" href="/css/station-pages.css">
 <script src="noon-steps.js"></script>
 </script>
 </body>
