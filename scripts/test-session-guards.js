@@ -18,7 +18,7 @@ assert.ok(!pages.includes('top: 100px'), 'titles are not pushed over the first t
 assert.ok(voyage.includes("showToast('Open a voyage summary before printing')"), 'a closed summary says why it did not print');
 assert.ok(voyage.includes("classList.contains('chengaio-embed')) return"), 'an embedded Voyage frame does not install a worker');
 assert.ok(!voyage.includes('if (reg.waiting) reg.waiting.postMessage'), 'a waiting worker is not activated on every load');
-assert.ok(!voyage.includes('pr-card-mark'), 'log cards do not add crop marks v1 did not print');
+assert.ok(voyage.includes('data-card-mark="tl"') && voyage.includes('.pr-card-mark{'), 'log card keeps the four corner marks the scanner finds');
 assert.ok(/const keyboardOpen = !!\(vv && layoutH > 0 && \(layoutH - visH\) > 100\)/.test(voyage),
   'only a shorter visual viewport counts as the keyboard');
 assert.ok(voyage.includes("classList.remove('keyboard-open')"), 'closing the flowmeter box clears the keyboard lock');

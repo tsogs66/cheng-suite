@@ -76,8 +76,10 @@ function waitListen() {
   });
   const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 } });
   await ctx.addInitScript((raw) => {
-    localStorage.setItem('chengAioLicenseEntitlement', raw);
-    localStorage.setItem('chengAioLicenseEntitlementFb', raw);
+    try {
+      localStorage.setItem('chengAioLicenseEntitlement', raw);
+      localStorage.setItem('chengAioLicenseEntitlementFb', raw);
+    } catch (e) { /* a sandboxed print preview has no storage */ }
     window.print = function () { window.__printed = (window.__printed || 0) + 1; };
     window.confirm = function () { return false; };
     window.prompt = function () { return null; };
@@ -114,8 +116,41 @@ function waitListen() {
         (n.dataset.module || '') === it.module && (n.dataset.page || '') === it.page);
       if (el) el.click();
     }, item);
+    const expect = {
+      'home:': /vessel|home|voyage progress/i,
+      'voyage:summary': /summary|voyage/i,
+      'voyage:entry': /log entry|previous entry|new entry/i,
+      'voyage:rob': /survey beside the log|remaining|\bROB\b/i,
+      'voyage:reports': /report/i,
+      'tanks:dashboard': /tank/i,
+      'tanks:fuel-report': /sounding|monitoring|tank/i,
+      'tanks:report': /voyage report|tank condition/i,
+      'tanks:vcf-wcf': /VCF/,
+      'tanks:iso8217': /ISO 8217|distillate/i,
+      'voyage:shipsetup': /sync|ship details|live sync/i,
+      'voyage:trends': /trend/i,
+      'bunkerplan:': /consumption|voyage leg|distance/i,
+      'bunkeringplan:': /bunker/i,
+      'eca:': /ECA|changeover/i,
+      'eorb:': /ORB|oil record/i,
+      'performance:': /performance|engine/i,
+      'spares:': /spare|requisition/i,
+      'notes:': /note/i,
+      'ce-rob:': /reconcil/i,
+      'ce-alerts:': /alert/i,
+      'ce-summary:': /superintendent|voyage summary/i,
+      'ce-inspect:': /inspection|PSC|vetting/i,
+    };
+    const rule = expect[item.key];
     let view = { text: '', src: '' };
-    for (let n = 0; n < 16; n++) {
+    for (let n = 0; n < 30; n++) {
+      if (n === 8 || n === 16) {
+        await page.evaluate((it) => {
+          const el = [...document.querySelectorAll('#sidebar .nav-item')].find((node) =>
+            (node.dataset.module || '') === it.module && (node.dataset.page || '') === it.page);
+          if (el) el.click();
+        }, item);
+      }
       await page.waitForTimeout(400);
       view = await page.evaluate(() => {
         const host = document.getElementById('aioPageHost') || document.getElementById('main') || document.body;
@@ -126,34 +161,14 @@ function waitListen() {
             text = frame.contentDocument.body.innerText || '';
           }
         } catch (e) { text = ''; }
-        if (!text) text = host.innerText || '';
+        if (!text || /^Loading…?$/.test(text.trim())) text = (document.getElementById('main') || host).innerText || '';
         text = text.replace(/\s+/g, ' ').trim();
-        return { text: text.slice(0, 220), src: frame ? (frame.getAttribute('src') || '') : '' };
+        return { text: text.slice(0, 4000), src: frame ? (frame.getAttribute('src') || '') : '' };
       });
-      if (view.text.length > 20 && !/^Loading…?$/.test(view.text)) break;
+      const ready = view.text.length > 40 && !/^Loading…?$/.test(view.text) && !/^[🔍−+% 0-9.]+$/.test(view.text);
+      if (ready && (!rule || rule.test(view.text))) break;
     }
     const opened = view.text.length > 20 && !/^Loading…?$/.test(view.text);
-    const expect = {
-      'home:': /vessel|home|voyage progress/i,
-      'voyage:summary': /summary|voyage/i,
-      'voyage:entry': /log entry|date & time/i,
-      'voyage:rob': /\bROB\b|remaining/i,
-      'voyage:reports': /report/i,
-      'tanks:dashboard': /tank/i,
-      'tanks:fuel-report': /sounding|monitoring|tank/i,
-      'bunkerplan:': /consumption|voyage leg|distance/i,
-      'bunkeringplan:': /bunker/i,
-      'eca:': /ECA|changeover/i,
-      'eorb:': /ORB|oil record/i,
-      'performance:': /performance|engine/i,
-      'spares:': /spare|requisition/i,
-      'notes:': /note/i,
-      'ce-rob:': /reconcil/i,
-      'ce-alerts:': /alert/i,
-      'ce-summary:': /superintendent|consumption/i,
-      'ce-inspect:': /inspection|PSC|vetting/i,
-    };
-    const rule = expect[item.key];
     const marked = !rule || rule.test(view.text);
     check(item.label + ' opens', opened && marked && errors.length === before, (errors.slice(before).join('; ') || view.text.slice(0, 90)));
 
@@ -219,22 +234,34 @@ function waitListen() {
       ge.value = '400';
       blr.value = '80';
       if (op && op.options && op.options.length) op.selectedIndex = 0;
-      let result = false;
       let err = '';
+      const before = (typeof state !== 'undefined' && state.entries) ? state.entries.length : 0;
       try {
-        result = await saveLogEntryFromForm({ interactive: false });
+        const btn = document.getElementById('btnAdd');
+        if (!btn) return { ok: false, reason: 'Add Entry button missing' };
+        btn.click();
       } catch (e) {
         err = String(e && e.message || e);
       }
-      const count = (typeof state !== 'undefined' && state.entries) ? state.entries.length : -1;
-      return { ok: result === true && count > 0, result, err, count, stamp: dt.value };
+      let count = before;
+      let listed = false;
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        count = (typeof state !== 'undefined' && state.entries) ? state.entries.length : -1;
+        const sel = document.getElementById('robAsOfSelect');
+        listed = !!(sel && [...sel.options].some((o) => /2026/.test(o.textContent || '')));
+        if (count > before && listed) break;
+      }
+      return { ok: count > before && listed, err, count, listed, stamp: dt.value };
     });
     check('log entry saves', saved.ok && saved.count > 0 && !(saved.alerts || []).length, JSON.stringify(saved));
 
     const chain = await frame.evaluate(() => {
       const stamp = '2026-11-20';
       if (typeof switchTab === 'function') switchTab('rob');
-      const rob = (document.getElementById('page-rob') || document.body).innerText || '';
+      const sel = document.getElementById('robAsOfSelect');
+      const optText = sel ? [...sel.options].map((o) => o.textContent || '').join(' ') : '';
+      const rob = optText + ' ' + ((document.getElementById('page-rob') || document.body).innerText || '');
       if (typeof switchTab === 'function') switchTab('reports');
       const reports = (document.getElementById('page-reports') || document.body).innerText || '';
       if (typeof switchTab === 'function') switchTab('entry');

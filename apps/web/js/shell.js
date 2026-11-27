@@ -417,6 +417,35 @@
     else if (next === 'home') touchKey = 'home';
     else if (next === 'eorb') touchKey = 'eorb';
     else touchKey = 'more';
+    /* Same program, different page: tell the open frame. Reloading it left
+       Loading on screen while the old copy was still saving. */
+    if (pageChanged && next === current && isSoftEmbedModule(next) && wantPage) {
+      const frames = [...document.querySelectorAll('.aio-embed-wrap:not(.aio-background-save) iframe.aio-embed-frame')];
+      const live = frames.find((frame) => {
+        const src = frame.getAttribute('src') || '';
+        if (next === 'tanks' || next === 'bunkeringplan') return /\/tanks\//.test(src);
+        return /voyage/.test(src);
+      }) || frames[0];
+      if (live && live.contentWindow) {
+        currentPage = wantPage;
+        setNavActive(current);
+        closeSidebar();
+        closeMoreSheet();
+        try {
+          const child = live.contentWindow;
+          if (next === 'tanks' || next === 'bunkeringplan') {
+            if (child && typeof child.navigate === 'function') child.navigate(wantPage);
+            else child.postMessage({ type: 'chengaio-show-page', page: wantPage }, '*');
+          } else if (child && typeof child.switchTab === 'function') {
+            child.switchTab(wantPage);
+          } else {
+            child.postMessage({ type: 'chengaio-show-page', page: wantPage }, '*');
+          }
+        } catch { /* ignore */ }
+        syncThemeChrome();
+        return;
+      }
+    }
     /* Re-entering the same embed module must not tear down the iframe — that
        stopped the bunkering pump clock and bounced operators back through a
        remount that felt like returning to the main menu. Vessel switches pass
@@ -504,6 +533,11 @@
       if (current !== next) return;
       const draw = pageHost();
       await mod.render(draw);
+      /* A save in the background makes the placeholder a separate box. When that
+         save finishes first, the page is drawn into the main area and the box
+         would stay on screen saying Loading. */
+      const placeholder = document.getElementById('aioPageHost');
+      if (placeholder && placeholder !== draw) placeholder.remove();
       if (current !== next) {
         /* Another page was opened while this one was drawing. If that one has already finished, this one has
            just painted over it: draw the current page again. If not, it will replace this one itself. */

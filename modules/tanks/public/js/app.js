@@ -3259,7 +3259,8 @@ function renderAddTank(main) {
   };
 
   document.getElementById('btn-import-csv').onclick = async () => {
-    const file = document.getElementById('csv-file').files[0];
+    const csvInput = document.getElementById('csv-file');
+    const file = csvInput && csvInput.files && csvInput.files[0];
     if (!file) { showToast('Choose a CSV or Excel file'); return; }
     Progress.start(document.getElementById('btn-import-csv').closest('.form-panel'),
       `Reading ${file.name}…`);
@@ -3380,7 +3381,8 @@ function renderAddTank(main) {
   };
 
   document.getElementById('btn-csv-apply').onclick = async () => {
-    const file = STATE._csvImportFile || document.getElementById('csv-file').files[0];
+    const csvPick = document.getElementById('csv-file');
+    const file = STATE._csvImportFile || (csvPick && csvPick.files && csvPick.files[0]);
     const replaceExisting = document.getElementById('csv-replace-existing')?.checked === true;
     Progress.start(document.getElementById('btn-csv-apply').closest('.form-panel'),
       `Importing ${file ? file.name : 'tanks'}…`);
@@ -5523,7 +5525,8 @@ function renderSettings(main) {
   };
 
   document.getElementById('btn-import').onclick = async () => {
-    const file = document.getElementById('import-file').files[0];
+    const importInput = document.getElementById('import-file');
+    const file = importInput && importInput.files && importInput.files[0];
     if (!file) { showToast('Choose a backup file'); return; }
     const merge = document.getElementById('import-merge').checked;
     setSettingsBusy(true);
@@ -6018,7 +6021,8 @@ function renderIso8217(main) {
         `<b>${escapeHtml(data.standard)}</b> — ${escapeHtml(data.title)}.<br>${escapeHtml(data.note || '')}`;
       paint('dist');
     } catch (e) {
-      document.getElementById('iso-note').textContent = e.message;
+      const note = document.getElementById('iso-note');
+      if (note) note.textContent = e.message;
     }
   })();
 }
@@ -6629,3 +6633,9 @@ document.addEventListener('DOMContentLoaded', boot);
   later();
   window.alignFields = run;
 })();
+
+window.addEventListener('message', (ev) => {
+  const msg = ev && ev.data;
+  if (!msg || msg.type !== 'chengaio-show-page' || !msg.page) return;
+  try { navigate(String(msg.page)); } catch (_) { /* ignore */ }
+});

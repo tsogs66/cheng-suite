@@ -104,9 +104,10 @@ check('what is read becomes a number: look-alike letters, comma decimals, stray 
 console.log('The cards carry what the reader needs');
 const tsc = fs.readFileSync(path.join(__dirname, '../modules/tanks/public/js/tank-sounding-card.js'), 'utf8');
 const voy = fs.readFileSync(path.join(__dirname, '../modules/voyage/www/voyage_manager.html'), 'utf8');
-check('both cards mark their write-in fields and do not add corner squares v1 did not print', () => {
+check('both cards print four corner marks and mark their write-in fields', () => {
   [tsc, voy].forEach((src) => {
-    assert.ok(!src.includes('pr-card-mark'), 'no crop marks');
+    ['tl', 'tr', 'bl', 'br'].forEach((c) => assert.ok(src.includes(`data-card-mark="${c}"`), 'mark ' + c));
+    assert.ok(/\.pr-card-mark\{[^}]*background:#000/.test(src.replace(/\s+/g, ' ').replace(/\{ /g, '{').replace(/ \}/g, '}')) || /\.pr-card-mark\{\s*position:absolute[^}]*background:#000/.test(src), 'marks are solid black');
     assert.ok(src.includes('data-card-field'), 'fields marked');
   });
   assert.ok(tsc.includes('data-card-box="ullage:') && tsc.includes('data-card-box="depth:'), 'the Ullage and Depth boxes are marked');

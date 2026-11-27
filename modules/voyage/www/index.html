@@ -18780,6 +18780,11 @@ const VOYAGE_BOOT_PAGES = new Set([
   'summary', 'reports', 'receipts', 'consumption', 'rangetotals', 'trends',
   'voyageabstract', 'reference', 'voyagesetup', 'guide',
 ]);
+window.addEventListener('message', (ev) => {
+  const msg = ev && ev.data;
+  if (!msg || msg.type !== 'chengaio-show-page' || !msg.page) return;
+  try { switchTab(String(msg.page)); } catch (_) { /* ignore */ }
+});
 function switchTab(pageName){
   if (!pageName || pageName === 'more') return;
   /* Consumption Plan inside ChEng AIO: the shell opens it in its own frame. */
@@ -20157,6 +20162,8 @@ function buildLogEntryDataHalfHtml(){
   }).join('');
 
   return `<div class="pr-led-inner">
+      <i class="pr-card-mark pr-card-tl" data-card-mark="tl" aria-hidden="true"></i><i class="pr-card-mark pr-card-tr" data-card-mark="tr" aria-hidden="true"></i>
+      <i class="pr-card-mark pr-card-bl" data-card-mark="bl" aria-hidden="true"></i><i class="pr-card-mark pr-card-br" data-card-mark="br" aria-hidden="true"></i>
       <div class="pr-led-title">LOG ENTRY DATA CARD</div>
       <div class="pr-led-sub">Voyage Chief - ${vessel}</div>
 
@@ -20313,6 +20320,7 @@ html, body{
   box-sizing:border-box;
 }
 .pr-led-inner{
+  position:relative;
   width:100%;
   height:auto;
   min-height:0;
@@ -20324,6 +20332,11 @@ html, body{
   line-height:1.15;
   --led-row: 4.2mm;
 }
+.pr-card-mark{
+  position:absolute; display:block; width:4mm; height:4mm; background:#000;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+.pr-card-tl{ left:0; top:0; } .pr-card-tr{ right:0; top:0; } .pr-card-bl{ left:0; bottom:0; } .pr-card-br{ right:0; bottom:0; }
 .pr-led-title{
   text-align:center; font-size:10.5pt; font-weight:700; letter-spacing:0.04em;
   margin:0 0 0.35mm; flex:0 0 auto;
@@ -40475,6 +40488,11 @@ document.getElementById('btnFoCopyPassword')?.addEventListener('click', copyFoPa
       window.addEventListener('chengpro:license-changed', () => {
         try { applyEorbLicenseVisibility(); } catch (_) {}
         try { applyConsumptionPlanVisibility(); } catch (_) {}
+      });
+      window.addEventListener('message', (ev) => {
+        const msg = ev && ev.data;
+        if (!msg || msg.type !== 'chengaio-show-page' || !msg.page) return;
+        try { switchTab(String(msg.page)); } catch (_) { /* ignore */ }
       });
       const qsPage = new URLSearchParams(location.search).get('page');
       const wantOrb = qsPage === 'orb' || /[?&]page=orb\b/.test(location.search);

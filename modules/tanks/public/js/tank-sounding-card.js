@@ -73,6 +73,8 @@ const TankSoundingCard = (() => {
     const byVal = sample ? esc(opts.sampleBy || '') : '';
 
     return `<div class="pr-tsc-inner" style="--tsc-rows:${Math.max(1, tanks.length || 1)}">
+      <i class="pr-card-mark pr-card-tl" data-card-mark="tl" aria-hidden="true"></i><i class="pr-card-mark pr-card-tr" data-card-mark="tr" aria-hidden="true"></i>
+      <i class="pr-card-mark pr-card-bl" data-card-mark="bl" aria-hidden="true"></i><i class="pr-card-mark pr-card-br" data-card-mark="br" aria-hidden="true"></i>
       <div class="pr-tsc-title">TANK SOUNDING CARD</div>
       <div class="pr-tsc-sub">Tank Chief - ${esc(name)}</div>
 
@@ -334,6 +336,7 @@ html, body{
   transform-origin:top left;
 }
 .pr-tsc-inner{
+  position:relative;
   width:100%;
   height:100%;
   max-height:100%;
@@ -346,6 +349,11 @@ html, body{
   line-height:1.15;
   --tsc-row: 5.2mm;
 }
+.pr-card-mark{
+  position:absolute; display:block; width:4mm; height:4mm; background:#000;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+.pr-card-tl{ left:0; top:0; } .pr-card-tr{ right:0; top:0; } .pr-card-bl{ left:0; bottom:0; } .pr-card-br{ right:0; bottom:0; }
 .pr-tsc-title{
   text-align:center; font-size:11pt; font-weight:700; letter-spacing:0.04em;
   margin:0 0 0.4mm; flex:0 0 auto;
@@ -429,6 +437,8 @@ html, body{
 .pr-tsc-empty{ text-align:center; color:#666; font-style:italic; }
 .pr-tsc-by{
   flex:0 0 auto; margin-top:auto; padding-top:2.2mm; width:100%;
+  /* keep the rule off the corner marks, so a photo can tell the marks from the lines */
+  box-sizing:border-box; padding-left:6mm; padding-right:6mm;
 }
 .pr-tsc-foot{
   flex:0 0 auto; margin-top:1.4mm;
