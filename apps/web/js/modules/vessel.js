@@ -5,6 +5,7 @@ const ENGINE_FIELDS = [
   'sfoc100', 'sfoc85', 'slocRef', 'mechEff',
   'fuelDensity', 'lubeDensity', 'lcvRef', 'lcvActual', 'propLawExp',
 ];
+const TONNAGE_FIELDS = ['grossTonnage', 'netTonnage', 'auxPowerKw'];
 
 window.ChengProModules.vessel = {
   title: 'Vessel Setup',
@@ -17,8 +18,20 @@ window.ChengProModules.vessel = {
     }
     const v = shared?.vessel || {
       name: '', imo: '', callSign: '', flag: '', company: '', type: '', dwt: '', notes: '', owner: '',
-      chiefEngineer: '',
+      chiefEngineer: '', master: '',
     };
+    if (active && window.ChengProVoyageBridge && typeof ChengProVoyageBridge.identityGapsFromVoyage === 'function') {
+      try {
+        const gaps = await ChengProVoyageBridge.identityGapsFromVoyage(v);
+        const gapKeys = Object.keys(gaps || {});
+        if (gapKeys.length) {
+          await ChengPro.api.fetch('/api/shell/vessels/' + encodeURIComponent(active.id), {
+            method: 'PUT', body: JSON.stringify({ ...v, ...gaps }),
+          });
+          Object.assign(v, gaps);
+        }
+      } catch (e) { /* Voyage Chief may not be open on this device yet */ }
+    }
     const assets = normalizeAssets(shared?.assets);
 
     root.innerHTML = `
@@ -27,15 +40,16 @@ window.ChengProModules.vessel = {
         <div class="section-head">
           <div>
             <h2>Vessel Setup</h2>
-            <p>Shared ship identity for Voyage Chief and Tank Chief (name, IMO, call sign, flag, company, type, DWT,
-               Chief Engineer, signature and vessel stamp). Both embedded programs read vessel data from this screen —
-               standalone Voyage Chief and Tank Chief keep their own vessel setup. Matching uses <strong>IMO first</strong>,
+            <p>Shared ship identity for Voyage Chief and Tank Chief. Both embedded programs read this screen.
+               Standalone Voyage Chief and Tank Chief keep their own setup. Matching uses <strong>IMO first</strong>,
                then vessel name — <code>MV</code> / <code>M/V</code> / <code>M.V.</code> prefixes are ignored.
-               Select the active vessel in the fleet register below.</p>
+               Voyage number, ports, flowmeters and opening ROB stay in Voyage Chief. Tank calibration and the ORB
+               equipment list stay in those programs.</p>
           </div>
         </div>
         <form id="vesselForm">
           ${!active ? '<p class="hint" style="margin-top:0">First vessel is stored on this device — works offline. You can sync later from Tank Chief.</p>' : ''}
+          <h3 class="subhead">Identity</h3>
           <div class="grid-2">
             <div class="field"><label>Name</label><input name="name" required value="${esc(v.name)}"></div>
             <div class="field"><label>IMO</label><input name="imo" value="${esc(v.imo)}"></div>
@@ -43,15 +57,24 @@ window.ChengProModules.vessel = {
             <div class="field"><label>Flag registry</label>
               <select name="flag" id="vesselFlag">${flagSelectOptions(v.flag || '')}</select>
               <span class="hint" id="vesselFlagHint">${esc(flagHint(v.flag || ''))}</span></div>
-            <div class="field"><label>Company</label><input name="company" value="${esc(v.company || v.owner || '')}"></div>
+            <div class="field"><label>Company / owner</label><input name="company" value="${esc(v.company || v.owner || '')}"></div>
             <div class="field"><label>Type</label><input name="type" value="${esc(v.type || '')}"></div>
             <div class="field"><label>DWT</label><input name="dwt" value="${esc(v.dwt || '')}"></div>
-            <div class="field"><label>Chief Engineer</label><input name="chiefEngineer" id="vesselChEng" value="${esc(v.chiefEngineer || '')}">
-              <span class="hint">Printed on Tank Chief / bunkering sheets. Signatures are stored under this name.</span></div>
+            <div class="field"><label>Gross tonnage (GT)</label><input name="grossTonnage" type="number" step="1" value="${escNum(v.grossTonnage)}"></div>
+            <div class="field"><label>Net tonnage (NT)</label><input name="netTonnage" type="number" step="1" value="${escNum(v.netTonnage)}"></div>
+            <div class="field"><label>Aux engine power (kW, total)</label><input name="auxPowerKw" type="number" step="1" value="${escNum(v.auxPowerKw)}"></div>
             <div class="field" style="grid-column:1/-1"><label>Notes</label><textarea name="notes" rows="3">${esc(v.notes || '')}</textarea></div>
           </div>
 
-          <h3 class="subhead">Main engine &amp; performance basis</h3>
+          <h3 class="subhead">Officers</h3>
+          <div class="grid-2">
+            <div class="field"><label>Chief Engineer</label><input name="chiefEngineer" id="vesselChEng" value="${esc(v.chiefEngineer || '')}">
+              <span class="hint">Printed on Tank Chief / bunkering sheets. Signatures are stored under this name.</span></div>
+            <div class="field"><label>Master (optional)</label><input name="master" value="${esc(v.master || '')}">
+              <span class="hint">Copied to the oil record book. Leave blank if the master is not recorded here.</span></div>
+          </div>
+
+          <h3 class="subhead">Engine / performance basis</h3>
           <p class="hint">Ported from Voyage Chief setup. Used by Performance Calculation (propeller law, SFOC/SLOC, ISO correction).</p>
           <div class="grid-2">
             <div class="field"><label>M/E RPM (100% MCR)</label><input name="mcrRpm" type="number" step="0.1" value="${escNum(v.mcrRpm)}"></div>
@@ -157,10 +180,11 @@ window.ChengProModules.vessel = {
         dwt: raw.dwt,
         notes: raw.notes,
         chiefEngineer: String(raw.chiefEngineer || '').trim(),
+        master: String(raw.master || '').trim(),
       };
-      for (const key of ENGINE_FIELDS) data[key] = parseOptionalNumber(raw[key]);
+      for (const key of ENGINE_FIELDS.concat(TONNAGE_FIELDS)) data[key] = parseOptionalNumber(raw[key]);
       const same = (a, b) => String(a == null || a === '' ? '' : a) === String(b == null || b === '' ? '' : b);
-      const keys = ['name', 'imo', 'callSign', 'flag', 'company', 'type', 'dwt', 'notes', 'chiefEngineer', ...ENGINE_FIELDS];
+      const keys = ['name', 'imo', 'callSign', 'flag', 'company', 'type', 'dwt', 'notes', 'chiefEngineer', 'master', ...TONNAGE_FIELDS, ...ENGINE_FIELDS];
       if (!String(data.name || '').trim()) return;
       if (keys.every((key) => same(data[key], active[key]))) return;
       if (active.voyageRegistryId) data.voyageRegistryId = active.voyageRegistryId;
@@ -183,8 +207,9 @@ window.ChengProModules.vessel = {
         dwt: raw.dwt,
         notes: raw.notes,
         chiefEngineer: String(raw.chiefEngineer || '').trim(),
+        master: String(raw.master || '').trim(),
       };
-      for (const key of ENGINE_FIELDS) {
+      for (const key of ENGINE_FIELDS.concat(TONNAGE_FIELDS)) {
         data[key] = parseOptionalNumber(raw[key]);
       }
       if (active?.voyageRegistryId) data.voyageRegistryId = active.voyageRegistryId;

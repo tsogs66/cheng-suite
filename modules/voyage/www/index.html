@@ -3969,6 +3969,7 @@ html.bright .bp-result.bp-result-neg .bp-result-value b{color:#b3261e;}
       <div class="panel">
         <h2>Engine Data</h2>
         <div class="form-grid cols3">
+          <p class="hint" id="aioEngineManagedNote" hidden>Managed in Vessel Setup</p>
           <div class="field"><label>M/E RPM (100% Load)</label><input type="number" step="0.1" id="s_mcrRpm" value="91"></div>
           <div class="field"><label>M/E KW (100% Load)</label><input type="number" step="1" id="s_mcrKw" value="18630"></div>
           <div class="field"><label>M/E RPM (85% Load)</label><input type="number" step="0.1" id="s_csrRpm"></div>
@@ -37635,7 +37636,8 @@ document.getElementById('btnOrbPrefillFromVessel')?.addEventListener('click', ()
   setup.imo = state.setup.imoNo || setup.imo;
   setup.flag = state.setup.flag || setup.flag;
   setup.chiefEng = state.setup.chEng || setup.chiefEng;
-  setup.gt = state.setup.dwt != null ? setup.gt : setup.gt;
+  setup.gt = state.setup.grossTonnage != null && state.setup.grossTonnage !== '' ? state.setup.grossTonnage : setup.gt;
+  setup.callSign = state.setup.callSign || setup.callSign;
   if (state.setup.fuelTanks?.length && !(setup.tanks.fuel||[]).length){
     setup.tanks.fuel = state.setup.fuelTanks.map((t,i)=>({ id:'fuel_'+i, name: t.name || t.label || ('FO Tank '+(i+1)), capacityM3: t.capacity ?? null, robM3: 0 }));
   }
@@ -39472,6 +39474,15 @@ function applyChengAioVesselHubLock(alreadyLocked){
     chEngVoy.placeholder = hub ? 'From ChEng AIO Vessel Setup' : 'Update at crew change';
     chEngVoy.title = hub ? 'Change this on the ChEng AIO Vessel Setup page.' : '';
   }
+  const engineIds = ['s_mcrRpm', 's_mcrKw', 's_csrRpm', 's_csrKw', 's_sfoc100', 's_sfoc85', 's_lcvRef', 's_lcvActual', 's_pitch'];
+  engineIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.readOnly = !!hub;
+    el.title = hub ? 'Managed in Vessel Setup' : '';
+  });
+  const engineNote = document.getElementById('aioEngineManagedNote');
+  if (engineNote) engineNote.hidden = !hub;
   const chEngVoyNote = document.getElementById('chEngVoyageNote');
   if (chEngVoyNote) {
     chEngVoyNote.textContent = hub
