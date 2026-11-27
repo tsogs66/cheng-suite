@@ -6526,9 +6526,8 @@ document.addEventListener('DOMContentLoaded', boot);
   function apply(){
     try{
       var w = window.innerWidth || 0, h = window.innerHeight || 0;
-      var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')
-        || window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-      document.documentElement.classList.toggle('tablet-rail', !!((mobile || (navigator.maxTouchPoints || 0) > 0) && w > h && w >= 900 && Math.min(w, h) >= 560));
+      var touch = document.documentElement.classList.contains('use-bottom-nav');
+      document.documentElement.classList.toggle('tablet-rail', !!(touch && w > h && w >= 600 && w < 1366 && h >= 500));
     }catch(_e){}
   }
   apply();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en-US" class="aio-suite">
+<html lang="en-US" class="aio-suite aio-shell-nav">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -14,6 +14,8 @@
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <!-- No Google Fonts — offline first launch must not block on network CSS. -->
   <link rel="stylesheet" href="/css/shell.css">
+  <link rel="stylesheet" href="/css/station.css">
+  <script src="/js/nav-mode.js"></script>
   <link rel="stylesheet" href="/css/hud-effects.css">
   <link rel="stylesheet" href="/css/loading-splash.css">
   <script>window.LOADING_SPLASH_BOOT_LABEL = 'Starting ChEng AIO…';</script>
@@ -23,6 +25,12 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <script>
     /* Apply before first paint (same as Voyage Chief). */
+    try {
+      var stationQ = location.search || '';
+      if (/[?&]station=0\b/.test(stationQ)) localStorage.removeItem('chengStation');
+      else if (/[?&]station=1\b/.test(stationQ)) localStorage.setItem('chengStation', '1');
+      if (localStorage.getItem('chengStation') === '1') document.documentElement.classList.add('station');
+    } catch (_eStation) {}
     try {
       var tm = localStorage.getItem('marine_theme');
       var mode = 'night';
@@ -41,26 +49,12 @@
       var ua = navigator.userAgent || '';
       var cap = window.Capacitor;
       var plat = (cap && cap.getPlatform) ? String(cap.getPlatform()) : '';
-      var native = !!(cap && (cap.isNativePlatform ? cap.isNativePlatform() : (plat && plat !== 'web')));
       var mobileOs = /Android|iPhone|iPad|iPod/i.test(ua) || plat === 'android' || plat === 'ios';
-      if (mobileOs || plat === 'android') {
+      if (window.ChengNav) ChengNav.apply();
+      /* Wide windows keep the Windows sidebar, including a phone user-agent
+         on a 1920 viewport. The Android class is only for the touch layout. */
+      if ((mobileOs || plat === 'android') && window.ChengNav && ChengNav.wantsBottomNav()) {
         document.documentElement.classList.add('aio-android-nav');
-      }
-      var touch = false;
-      try {
-        touch = window.matchMedia('(hover: none) and (pointer: coarse)').matches
-          || (navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) <= 1100);
-      } catch (_eT) {}
-      var vw = window.innerWidth || 0;
-      var vh = window.innerHeight || 0;
-      var tabletOrPhone = mobileOs || native || touch
-        || (Math.min(vw, vh) > 0 && Math.min(vw, vh) <= 900)
-        || (vw > 0 && vw <= 1180);
-      if (tabletOrPhone) {
-        document.documentElement.classList.add('use-bottom-nav');
-      }
-      if (!mobileOs && !native && vw >= 1181 && Math.min(vw, vh) > 900) {
-        document.documentElement.classList.remove('use-bottom-nav');
       }
     } catch (_e) {}
     /* Keep phone/tablet browsers on the mobile layout (block “Desktop site”). */
@@ -152,26 +146,25 @@
     </div>
 
     <nav class="bottom-nav" id="bottomNav" aria-label="Primary modules">
-      <button type="button" class="bottom-item" data-module="voyage" aria-label="Voyage">
-        <span class="bn-ic" aria-hidden="true">🧭</span><span>Voyage</span>
+      <button type="button" class="bottom-item" data-touch="home" data-module="home" aria-label="Home">
+        <svg class="bn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span>Home</span>
       </button>
-      <button type="button" class="bottom-item" data-module="tanks" aria-label="Tanks">
-        <span class="bn-ic" aria-hidden="true">⛽</span><span>Tanks</span>
+      <button type="button" class="bottom-item" data-touch="noon" data-module="voyage" data-page="entry" aria-label="Noon report">
+        <svg class="bn-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg>
+        <span>Noon</span>
       </button>
-      <button type="button" class="bottom-item" data-module="bunkerplan" aria-label="Consumption Plan">
-        <span class="bn-ic" aria-hidden="true">📈</span><span>Cons Plan</span>
+      <button type="button" class="bottom-item" data-touch="soundings" data-module="tanks" data-page="fuel-report" aria-label="Tank soundings">
+        <svg class="bn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8v4H8zM9 7v12a3 3 0 0 0 6 0V7"/><path d="M12 11v4"/></svg>
+        <span>Soundings</span>
       </button>
-      <button type="button" class="bottom-item" data-module="bunkeringplan" aria-label="Bunkering Plan">
-        <span class="bn-ic" aria-hidden="true">📥</span><span>Bnk Plan</span>
+      <button type="button" class="bottom-item bn-eorb" data-touch="eorb" data-module="eorb" aria-label="e-ORB">
+        <svg class="bn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H8a2 2 0 0 1-2-2z"/><path d="M6 4v14"/><path d="M10 9h5M10 13h5"/></svg>
+        <span>e-ORB</span>
       </button>
-      <button type="button" class="bottom-item" data-module="eorb" aria-label="e-ORB">
-        <span class="bn-ic" aria-hidden="true">📕</span><span>e-ORB</span>
-      </button>
-      <button type="button" class="bottom-item" data-module="performance" aria-label="Performance">
-        <span class="bn-ic" aria-hidden="true">📊</span><span>Perf</span>
-      </button>
-      <button type="button" class="bottom-item" data-module="more" aria-label="More">
-        <span class="bn-ic" aria-hidden="true">⋯</span><span>More</span>
+      <button type="button" class="bottom-item" data-touch="more" data-module="more" aria-label="More">
+        <svg class="bn-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/></svg>
+        <span>More</span>
       </button>
     </nav>
     <div class="bn-more-sheet" id="bnMoreSheet" aria-hidden="true">
@@ -179,30 +172,26 @@
         <div class="bn-more-handle" aria-hidden="true"></div>
         <div class="bn-more-title">More</div>
         <div class="bn-more-grid">
-          <button type="button" class="bn-more-item" data-module="notes">
-            <span class="bn-ic" aria-hidden="true">📝</span><span>Notes</span>
-          </button>
-          <button type="button" class="bn-more-item active" data-module="home">
-            <span class="bn-ic" aria-hidden="true">🏠</span><span>Home</span>
-          </button>
-          <button type="button" class="bn-more-item" data-module="spares">
-            <span class="bn-ic" aria-hidden="true">🔩</span><span>Spares</span>
-          </button>
-          <button type="button" class="bn-more-item" data-module="vessel">
-            <span class="bn-ic" aria-hidden="true">🚢</span><span>Setup</span>
-          </button>
-          <button type="button" class="bn-more-item" data-module="eca">
-            <span class="bn-ic" aria-hidden="true">🌊</span><span>ECA</span>
-          </button>
-          <button type="button" class="bn-more-item" data-module="backup">
-            <span class="bn-ic" aria-hidden="true">⇅</span><span>Backup &amp; Sync</span>
-          </button>
-          <button type="button" class="bn-more-item" data-module="license">
-            <span class="bn-ic" aria-hidden="true">🔑</span><span>License</span>
-          </button>
-          <button type="button" class="bn-more-item" data-module="about">
-            <span class="bn-ic" aria-hidden="true">ℹ</span><span>About</span>
-          </button>
+          <div class="bn-more-label">Watch</div>
+          <button type="button" class="bn-more-item" data-module="home" data-touch="home"><span>Home</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="entry" data-touch="noon"><span>Noon report</span></button>
+          <button type="button" class="bn-more-item" data-module="spares"><span>Spares</span></button>
+          <button type="button" class="bn-more-item" data-module="notes"><span>Notes</span></button>
+          <div class="bn-more-label">Voyage</div>
+          <button type="button" class="bn-more-item" data-module="voyage"><span>Voyage</span></button>
+          <button type="button" class="bn-more-item" data-module="bunkerplan"><span>Consumption Plan</span></button>
+          <button type="button" class="bn-more-item" data-module="eca"><span>ECA</span></button>
+          <button type="button" class="bn-more-item" data-module="performance"><span>Performance</span></button>
+          <button type="button" class="bn-more-item" data-module="eorb" data-touch="eorb"><span>e-ORB</span></button>
+          <div class="bn-more-label">Tanks</div>
+          <button type="button" class="bn-more-item" data-module="tanks"><span>Tanks</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="fuel-report" data-touch="soundings"><span>Soundings</span></button>
+          <button type="button" class="bn-more-item" data-module="bunkeringplan"><span>Bunkering Plan</span></button>
+          <div class="bn-more-label">Ship</div>
+          <button type="button" class="bn-more-item" data-module="vessel"><span>Vessel Setup</span></button>
+          <button type="button" class="bn-more-item" data-module="backup"><span>Backup &amp; Sync</span></button>
+          <button type="button" class="bn-more-item" data-module="license"><span>License</span></button>
+          <button type="button" class="bn-more-item" data-module="about"><span>About</span></button>
         </div>
         <button type="button" class="theme-toggle bn-more-theme" data-theme-toggle aria-pressed="false" title="Colour theme">Bright</button>
         <button type="button" class="theme-toggle bn-more-theme bn-more-fs" id="bnMoreFullscreen" aria-pressed="false" hidden title="Hide the Android status and navigation bars. Swipe from the edge to bring them back.">Full screen: Off</button>

@@ -2398,3 +2398,80 @@ html.aio-fullscreen-embed.aio-embed-menu.tablet-rail .aio-return-fabs { left: ca
 html.use-bottom-nav .bn-more-theme { display: block; width: 100%; margin-top: 10px; padding: 12px; }
 html.use-bottom-nav .theme-topbar, html.use-bottom-nav .theme-sidebar { display: none !important; }
 html.aio-fullscreen-embed.aio-theme-in-more.use-bottom-nav .aio-return-fabs .aio-theme-fab { display: none !important; }
+
+/* v2 touch chrome. The shell keeps its menu while a module is embedded
+   (aio-shell-nav). Phone home is four scroll-snap panes. */
+html.aio-fullscreen-embed.aio-shell-nav {
+  --topbar-h: 72px;
+  --bottom-h: 0px;
+}
+html.aio-fullscreen-embed.aio-shell-nav.use-bottom-nav { --bottom-h: 64px; }
+html.aio-fullscreen-embed.aio-shell-nav .topbar { display: flex !important; }
+html.aio-fullscreen-embed.aio-shell-nav .sidebar { display: flex !important; }
+html.aio-fullscreen-embed.aio-shell-nav.use-bottom-nav .sidebar,
+html.aio-fullscreen-embed.aio-shell-nav.use-bottom-nav .sidebar-backdrop { display: none !important; }
+html.aio-fullscreen-embed.aio-shell-nav .bottom-nav { display: none !important; }
+html.aio-fullscreen-embed.aio-shell-nav.use-bottom-nav .bottom-nav { display: flex !important; }
+html.aio-fullscreen-embed.aio-shell-nav.use-bottom-nav .bn-more-sheet.open { display: block !important; }
+html.aio-fullscreen-embed.aio-shell-nav .watch-strip:not([hidden]) { display: flex !important; }
+html.aio-fullscreen-embed.aio-shell-nav .menu-btn { display: inline-flex !important; }
+html.aio-fullscreen-embed.aio-shell-nav.use-bottom-nav .menu-btn { display: none !important; }
+html.aio-fullscreen-embed.aio-shell-nav .aio-return-fabs { display: none !important; }
+
+html.use-bottom-nav .bottom-item {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+}
+html.use-bottom-nav .bottom-item .bn-svg { width: 22px; height: 22px; display: block; margin: 0 auto 2px; }
+@media (max-width: 359px) {
+  html.use-bottom-nav .bottom-item.bn-eorb { display: none !important; }
+}
+html.short-landscape.use-bottom-nav .bottom-nav {
+  top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+  bottom: auto;
+  height: 48px;
+  flex-direction: row;
+}
+html.short-landscape.use-bottom-nav { --bottom-h: 0px; }
+html.short-landscape.use-bottom-nav .main { padding-top: 48px; }
+
+.home-pane-nav { display: none; }
+html.phone-panes .home-pane-nav {
+  display: flex;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 8px 10px;
+  background: var(--panel-solid);
+}
+html.phone-panes .home-pane-nav button {
+  flex: 1 1 0;
+  min-height: 44px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
+  border-radius: 8px;
+}
+html.phone-panes .home-pane-nav button.on { box-shadow: inset 0 2px 0 var(--brass); }
+html.phone-panes #homePanes {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  height: calc(100dvh - var(--topbar-h) - var(--bottom-h) - 64px);
+}
+html.phone-panes .home-pane {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  overflow-y: auto;
+  min-height: 0;
+}
+html.use-bottom-nav .bn-more-label {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 10px 4px 0;
+}

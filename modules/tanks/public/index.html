@@ -10,6 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Tank Chief</title>
+  <script src="/js/nav-mode.js"></script>
   <script>
     /* ChEng AIO serves this app under /tanks/ — set prefix + base before assets load. */
     (function mountUnderTanks() {
@@ -42,27 +43,13 @@
       document.documentElement.setAttribute('data-theme', mode);
     } catch (_e) {}
 
-    /* Mobile/Android: always bottom nav (portrait + landscape). Windows desktop keeps sidebar. */
+    /* Touch chrome: coarse pointer (or a phone WebView) and viewport under 1366.
+       Window height and screen size are not inputs. Same rule as the shell. */
     (function preferBottomNav() {
-      function isMobileChrome() {
-        try {
-          var cap = window.Capacitor;
-          var native = !!(cap && (cap.isNativePlatform
-            ? cap.isNativePlatform()
-            : (cap.getPlatform && cap.getPlatform() !== 'web')));
-          var ua = navigator.userAgent || '';
-          if (native || /Android|iPhone|iPad|iPod/i.test(ua)) return true;
-        } catch (_e) {}
-        var w = window.innerWidth || document.documentElement.clientWidth || 0;
-        var h = window.innerHeight || document.documentElement.clientHeight || 0;
-        /* Tablet landscape is often wider than 900; keep the bar up to the 1180 tablet band. */
-        return (Math.min(w, h) > 0 && Math.min(w, h) <= 900) || (w > 0 && w <= 1180);
-      }
       function apply() {
         try {
-          var mobile = isMobileChrome();
-          document.documentElement.classList.toggle('use-bottom-nav', mobile);
-          document.documentElement.classList.toggle('is-mobile-chrome', mobile);
+          if (window.ChengNav) ChengNav.apply();
+          var mobile = document.documentElement.classList.contains('use-bottom-nav');
           if (!mobile) document.documentElement.classList.remove('nav-open');
         } catch (_e) {}
       }

@@ -31,32 +31,15 @@
 <link rel="stylesheet" href="loading-splash.css">
 <script>window.LOADING_SPLASH_BOOT_LABEL = 'Starting Voyage Chief…';</script>
 <script src="loading-splash.js"></script>
+<script src="/js/nav-mode.js"></script>
 <script>
-/* Prefer bottom nav in Capacitor/Android and on touch devices (WebView CSS width is often >720).
-   Android/iOS always keep bottom nav in landscape — never restore top tabs for width ≥1101. */
+/* Prefer bottom nav on a coarse pointer and a viewport narrower than 1366.
+   Height and screen size are not inputs. See apps/web/js/nav-mode.js. */
 (function(){
   try{
-    var cap = window.Capacitor;
-    var native = !!(cap && (cap.isNativePlatform ? cap.isNativePlatform() : (cap.getPlatform && cap.getPlatform() !== 'web')));
-    var ua = navigator.userAgent || '';
-    var mobileOs = /Android|iPhone|iPad|iPod/i.test(ua);
-    var touch = false;
-    try{
-      touch = window.matchMedia('(hover: none) and (pointer: coarse)').matches
-        || (navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) <= 1100);
-    }catch(_e){}
-    var mobileLocked = native || mobileOs;
+    if (window.ChengNav) ChengNav.apply();
     var vw = window.innerWidth || 0;
-    var vh = window.innerHeight || 0;
-    if (mobileLocked || touch || (Math.min(vw, vh) > 0 && Math.min(vw, vh) <= 900) || (vw > 0 && vw <= 1180)){
-      document.documentElement.classList.add('use-bottom-nav');
-    }
-    if (mobileLocked) {
-      document.documentElement.classList.add('is-mobile-chrome');
-      document.documentElement.classList.remove('use-top-tabs');
-    } else if (vw >= 1181 && Math.min(vw, vh) > 900) {
-      /* Wide Windows desktop: keep top tabs. Tablet landscape (≤1180) stays on the bar. */
-      document.documentElement.classList.remove('use-bottom-nav');
+    if (!document.documentElement.classList.contains('use-bottom-nav') && vw >= 1366) {
       document.documentElement.classList.add('use-top-tabs');
     }
     /* Apply before first paint so the login card is not white with dark-theme
@@ -2658,6 +2641,19 @@
   html.eorb-embed body,
   html.bunkerplan-embed body {
     padding-bottom: 0 !important;
+  }
+  /* Inside ChEng AIO the shell owns the menu. The module tabs and bar stay for standalone Voyage Chief. */
+  html.chengaio-embed #tabs,
+  html.chengaio-embed .tabs,
+  html.chengaio-embed .bottom-nav,
+  html.chengaio-embed #bnMoreSheet,
+  html.chengaio-embed #bnMoreBackdrop,
+  html.chengaio-embed .theme-fab {
+    display: none !important;
+  }
+  html.chengaio-embed body {
+    padding-bottom: 0 !important;
+    padding-left: 0 !important;
   }
   html.eorb-embed .page:not(#page-orb) { display: none !important; }
   html.eorb-embed #page-orb { display: block !important; }
@@ -18759,20 +18755,12 @@ document.getElementById('tabs').addEventListener('click', (e)=>{
       const ua = navigator.userAgent || '';
       const mobileOs = /Android|iPhone|iPad|iPod/i.test(ua);
       const mobileLocked = native || mobileOs;
-      const touch = window.matchMedia('(hover: none) and (pointer: coarse)').matches
-        || ((navigator.maxTouchPoints || 0) > 0 && Math.min(screen.width, screen.height) <= 1100);
-      /* Prefer screen size for chrome decisions — soft keyboard shrinks innerHeight. */
+      const touch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+      if (window.ChengNav) ChengNav.apply();
+      /* Keyboard detection still reads the screen so a soft keyboard is not a short phone.
+         It does not choose the menu. */
       const screenMin = Math.min(screen.width || 0, screen.height || 0);
-      if (mobileLocked || touch || screenMin <= 900 || Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 900){
-        document.documentElement.classList.add('use-bottom-nav');
-      }
-      document.documentElement.classList.toggle('is-mobile-chrome', mobileLocked);
-      /* Wide Windows desktop: keep top tabs. Android never restores them in landscape. */
-      if (mobileLocked) {
-        document.documentElement.classList.remove('use-top-tabs');
-      } else if ((window.innerWidth || 0) >= 1181
-        && Math.min(window.innerWidth || 0, window.innerHeight || 0) > 900) {
-        document.documentElement.classList.remove('use-bottom-nav');
+      if ((window.innerWidth || 0) >= 1366 && !document.documentElement.classList.contains('use-bottom-nav')) {
         document.documentElement.classList.add('use-top-tabs');
       } else {
         document.documentElement.classList.remove('use-top-tabs');
@@ -40700,7 +40688,8 @@ function askText(opts){
       var w = window.innerWidth || 0, h = window.innerHeight || 0;
       var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')
         || window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-      document.documentElement.classList.toggle('tablet-rail', !!((mobile || (navigator.maxTouchPoints || 0) > 0) && w > h && w >= 900 && Math.min(w, h) >= 560));
+      var touchNav = document.documentElement.classList.contains('use-bottom-nav');
+      document.documentElement.classList.toggle('tablet-rail', !!(touchNav && w > h && w >= 600 && w < 1366 && h >= 500));
     }catch(_e){}
   }
   apply();
@@ -40802,6 +40791,7 @@ function askText(opts){
   later();
   window.alignFields = run;
 })();
+<script src="noon-steps.js"></script>
 </script>
 </body>
 </html>

@@ -51,23 +51,21 @@ const navFn = (() => {
   return JS.slice(start, i + 1);
 })();
 
-/* Assert on CODE, not on the comment that explains what was removed —
-   the comment names the old test on purpose. */
-const navCode = navFn
+const NAV_SRC = fs.readFileSync(path.join(ROOT, 'apps/web/js/nav-mode.js'), 'utf8');
+const navCode = NAV_SRC
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/^\s*\/\/.*$/gm, '');
 
+check('the shell delegates to the shared predicate',
+  /ChengNav\.wantsBottomNav\(/.test(navFn), true);
 check('the height-based test is gone',
-  /Math\.min\(vw,\s*vh\)/.test(navCode), false);
-check('the screen-min test is gone too (900 on a 1600x900 monitor)',
-  /screenMin/.test(navCode), false);
-check('innerHeight is not consulted at all',
-  /innerHeight/.test(navCode), false);
-check('width still decides', /vw\s*<=\s*1180/.test(navCode), true);
-check('and so do the real touch signals',
-  /pointer: coarse/.test(navCode) && /maxTouchPoints/.test(navCode), true);
-check('native and mobile platforms still force it',
-  /isNativePlatform/.test(navFn) && /Android\|iPhone\|iPad\|iPod/.test(navFn), true);
+  /Math\.min\(/.test(navCode), false);
+check('screen size is not an input',
+  /screen\.(width|height)/.test(navCode), false);
+check('the shared predicate names the desktop cutoff',
+  /1366/.test(navCode), true);
+check('a coarse pointer is required for a mouse window',
+  /pointer: coarse/.test(navCode), true);
 check('and the reason is written down',
   /WIDTH decides, never height/.test(navFn), true);
 
@@ -75,19 +73,15 @@ check('and the reason is written down',
    stubbed, so the decision is tested rather than the text of it. */
 function wantsBottomNavAt(vw, vh, opts) {
   const o = opts || {};
-  const sandbox = {
-    window: {
-      innerWidth: vw,
-      innerHeight: vh,
-      matchMedia: (q) => ({ matches: !!o.coarse && /coarse/.test(q) }),
-      Capacitor: o.capacitor || undefined,
-    },
+  const fake = {
+    innerWidth: vw,
+    innerHeight: vh,
+    matchMedia: (q) => ({ matches: !!o.coarse && /coarse/.test(q) }),
+    Capacitor: o.capacitor || undefined,
     navigator: { userAgent: o.ua || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', maxTouchPoints: o.touchPoints || 0 },
-    screen: { width: o.screenW || vw, height: o.screenH || vh },
   };
-  const fn = new Function('window', 'navigator', 'screen',
-    `${navFn} return wantsBottomNav();`);
-  return fn(sandbox.window, sandbox.navigator, sandbox.screen);
+  const ChengNav = require(path.join(ROOT, 'apps/web/js/nav-mode.js'));
+  return ChengNav.wantsBottomNav(fake);
 }
 
 check('1440x900 desktop is a desktop', wantsBottomNavAt(1440, 900), false);
@@ -95,12 +89,13 @@ check('1366x768 laptop is a desktop', wantsBottomNavAt(1366, 768), false);
 check('1920x937 maximised on 1080p is a desktop', wantsBottomNavAt(1920, 937), false);
 check('2560x1297 is a desktop', wantsBottomNavAt(2560, 1297), false);
 check('a very short desktop window is still a desktop', wantsBottomNavAt(1920, 500), false);
+check('a 1920 touch laptop keeps the Windows menu', wantsBottomNavAt(1920, 1080, { coarse: true }), false);
 
-check('a narrow window gets the bottom bar', wantsBottomNavAt(1100, 900), true);
+check('a narrow mouse window keeps the sidebar', wantsBottomNavAt(1100, 900), false);
+check('a narrow coarse window gets the bottom bar', wantsBottomNavAt(1100, 800, { coarse: true }), true);
 check('a phone gets it', wantsBottomNavAt(390, 844, { ua: 'iPhone', coarse: true }), true);
 check('a phone in landscape gets it', wantsBottomNavAt(844, 390, { ua: 'iPhone', coarse: true }), true);
-check('an Android tablet gets it', wantsBottomNavAt(1280, 800, { ua: 'Android', coarse: true }), true);
-check('a touchscreen laptop gets it', wantsBottomNavAt(1920, 1080, { coarse: true }), true);
+check('an Android tablet under 1366 gets it', wantsBottomNavAt(1280, 800, { ua: 'Android', coarse: true }), true);
 
 /* ---- 2. full screen pins the window, whatever the nav mode --------------- */
 

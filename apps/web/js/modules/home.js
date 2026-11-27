@@ -23,7 +23,14 @@ window.ChengProModules.home = {
         <p class="hint" style="margin-top:10px">Start with the ship name and IMO. Home becomes an operational dashboard once a vessel is active.</p>
       </section>` : ''}
 
-      <section class="panel" id="homeVoyagePanel">
+      <nav class="home-pane-nav" id="homePaneNav" aria-label="Home screens">
+        <button type="button" data-pane="voyage">Voyage</button>
+        <button type="button" data-pane="fuel">Fuel</button>
+        <button type="button" data-pane="tanks">Tanks</button>
+        <button type="button" data-pane="engine">Engine</button>
+      </nav>
+      <div class="home-panes" id="homePanes">
+      <section class="panel home-pane" id="homeVoyagePanel" data-pane="voyage">
         <div class="section-head">
           <h2>Voyage progress</h2>
           <div class="sub" id="homeVoyageSub">${hasVoyage ? 'Loading…' : 'Voyage not on this license'}</div>
@@ -39,7 +46,7 @@ window.ChengProModules.home = {
         <p class="home-warn">Voyage Chief is not on this license — ask the office to include it on your ChEng AIO key.</p>`}
       </section>
 
-      <section class="panel" id="homeGaugesPanel">
+      <section class="panel home-pane" id="homeGaugesPanel" data-pane="fuel">
         <div class="section-head">
           <h2>Calculated ROB</h2>
           <div class="sub">Opening vs Present from Voyage log</div>
@@ -50,7 +57,7 @@ window.ChengProModules.home = {
         <div class="gauge-grid" id="fuelDualGauges"></div>
       </section>
 
-      <section class="panel" id="homeTanksPanel">
+      <section class="panel home-pane" id="homeTanksPanel" data-pane="tanks">
         <div class="section-head">
           <h2>Vessel tank overview</h2>
           <div class="sub">Fuel tanks only</div>
@@ -68,11 +75,35 @@ window.ChengProModules.home = {
         <div class="tg-grid" id="homeFuelGrid"></div>` : `
         <p class="home-warn">Tank Chief is not on this license — ask the office to include it on your ChEng AIO key.</p>`}
       </section>
+      <section class="panel home-pane" id="homeEnginePanel" data-pane="engine">
+        <div class="section-head">
+          <h2>Engine</h2>
+          <div class="sub">Noon, performance, notes, oil record</div>
+        </div>
+        <p class="hint">Running hours, SFOC, CII and the latest noon stay on Noon report and Performance. This screen opens them.</p>
+        <div class="toggle-row">
+          <button type="button" class="home-action" data-go="performance">Performance</button>
+          <button type="button" class="home-action" data-go="notes">Notes</button>
+          <button type="button" class="home-action" data-go="eorb">e-ORB</button>
+          <button type="button" class="home-action" data-go="backup">Backup &amp; Sync</button>
+        </div>
+      </section>
+      </div>
     `;
 
     root.querySelectorAll('[data-go]').forEach((btn) => {
       btn.onclick = () =>
         window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: btn.dataset.go }));
+    });
+    const homePanes = root.querySelector('#homePanes');
+    root.querySelectorAll('#homePaneNav [data-pane]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const pane = root.querySelector('.home-pane[data-pane="' + btn.dataset.pane + '"]');
+        if (pane && homePanes) pane.scrollIntoView({ inline: 'start', block: 'nearest' });
+        root.querySelectorAll('#homePaneNav [data-pane]').forEach((b) => {
+          b.classList.toggle('on', b === btn);
+        });
+      });
     });
     root.querySelector('#goVoyageFromHome')?.addEventListener('click', () => ChengPro.openVoyage());
     root.querySelector('#goLogEntryFromHome')?.addEventListener('click', () => ChengPro.openVoyage({ page: 'entry' }));

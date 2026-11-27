@@ -3775,3 +3775,47 @@ html.bright .bp-result.bp-result-neg .bp-result-value b{color:#b3261e;}
 }
 .bk-nav .btn { flex: 1 1 0; min-width: max-content; min-height: 44px; white-space: nowrap; }
 @media print { .bk-nav { display: none !important; } }
+
+/* Inside ChEng AIO the shell owns navigation. Standalone Tank Chief keeps its sidebar and bar. */
+html.chengaio-embed .sidebar,
+html.chengaio-embed .bottom-nav,
+html.chengaio-embed .menu-toggle,
+html.chengaio-embed .theme-fab,
+html.chengaio-embed .bn-more-sheet {
+  display: none !important;
+}
+html.chengaio-embed .app-shell { margin-left: 0 !important; }
+html.chengaio-embed.use-bottom-nav .main { padding-bottom: 12px !important; }
+
+/* Phone and tablet-portrait soundings: one card per tank. The grid returns from 1100px. */
+html.sounding-cards .fr-sheet thead { display: none; }
+html.sounding-cards .fr-sheet,
+html.sounding-cards .fr-sheet tbody,
+html.sounding-cards .fr-sheet tr,
+html.sounding-cards .fr-sheet th,
+html.sounding-cards .fr-sheet td {
+  display: block;
+  width: auto;
+}
+html.sounding-cards .fr-sheet tr {
+  margin: 0 0 12px;
+  padding: 10px;
+  border: 1px solid var(--line-strong, rgba(255,255,255,.2));
+  border-radius: 10px;
+}
+html.sounding-cards .fr-sheet td[data-label],
+html.sounding-cards .fr-sheet th[data-label] {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 0;
+}
+html.sounding-cards .fr-sheet td[data-label]::before,
+html.sounding-cards .fr-sheet th[data-label]::before {
+  content: attr(data-label);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}

@@ -8,19 +8,21 @@
   const backdrop = document.getElementById('sidebarBackdrop');
   const toastEl = document.getElementById('toast');
   let current = 'home';
+  let touchKey = 'home';
   let unfinishedLogKept = false;
   let vesselLoadDepth = 0;
   let toastTimer = null;
   let booted = false;
   const frameFlushJobs = new WeakMap();
-  const BOTTOM_PRIMARY = new Set(['voyage', 'tanks', 'bunkerplan', 'bunkeringplan', 'eorb', 'performance']);
   const moreSheet = document.getElementById('bnMoreSheet');
 
   function setNavActive(module) {
-    const inMore = !BOTTOM_PRIMARY.has(module);
-    document.querySelectorAll('.nav-item, .bottom-item').forEach((el) => {
-      const key = el.dataset.module;
-      el.classList.toggle('active', key === 'more' ? inMore : key === module);
+    document.querySelectorAll('.nav-item').forEach((el) => {
+      el.classList.toggle('active', el.dataset.module === module);
+    });
+    document.querySelectorAll('.bottom-item').forEach((el) => {
+      const key = el.dataset.touch || el.dataset.module;
+      el.classList.toggle('active', key === touchKey);
     });
     document.querySelectorAll('#bnMoreSheet .bn-more-item').forEach((el) => {
       el.classList.toggle('active', el.dataset.module === module);
@@ -390,6 +392,18 @@
         }
       } catch { /* ignore */ }
     }
+    if (opts && opts.page && (next === 'voyage' || next === 'tanks')) {
+      try {
+        sessionStorage.setItem(
+          next === 'voyage' ? 'chengAioPendingVoyagePage' : 'chengAioPendingTankPage',
+          String(opts.page)
+        );
+      } catch { /* ignore */ }
+    }
+    if (opts && opts.touch) touchKey = opts.touch;
+    else if (next === 'home') touchKey = 'home';
+    else if (next === 'eorb') touchKey = 'eorb';
+    else touchKey = 'more';
     /* Re-entering the same embed module must not tear down the iframe — that
        stopped the bunkering pump clock and bounced operators back through a
        remount that felt like returning to the main menu. Vessel switches pass
@@ -529,36 +543,19 @@
     return /Android/i.test(ua);
   }
 
-  /** Phone / tablet chrome — bottom bar in both orientations, like Voyage/Tank. */
   function wantsBottomNav() {
+    /* WIDTH decides, never height. See nav-mode.js. */
     try {
-      const cap = window.Capacitor;
-      const plat = cap && cap.getPlatform ? String(cap.getPlatform()) : '';
-      const native = !!(cap && (cap.isNativePlatform ? cap.isNativePlatform() : (plat && plat !== 'web')));
-      const ua = navigator.userAgent || '';
-      const mobileOs = /Android|iPhone|iPad|iPod/i.test(ua) || plat === 'android' || plat === 'ios';
-      if (native || mobileOs) return true;
-      const touch = window.matchMedia('(hover: none) and (pointer: coarse)').matches
-        || ((navigator.maxTouchPoints || 0) > 0 && Math.min(screen.width, screen.height) <= 1100);
-      const vw = window.innerWidth || 0;
-      /* WIDTH decides, never height.
-         This used to read `Math.min(vw, vh) <= 900`, so a 1440x900 desktop --
-         or any laptop, or a maximised window on a 1080p screen, where the
-         inner height lands under 900 -- was classified as a phone. Every
-         desktop layout rule is written `:not(.use-bottom-nav)`, so that one
-         test switched off the pinned shell and the scrolling pane, and the
-         whole window scrolled instead. A short window is still a desktop.
-         The same went for `screen` min side, which is 900 on a 1600x900
-         monitor and 768 on a 1366x768 laptop. */
-      if (touch || (vw > 0 && vw <= 1180)) {
-        return true;
+      if (window.ChengNav && typeof ChengNav.wantsBottomNav === 'function') {
+        return ChengNav.wantsBottomNav();
       }
     } catch { /* ignore */ }
     return false;
   }
 
   function applyAndroidNavShell() {
-    const on = isAndroidNav();
+    const on = isAndroidNav() && wantsBottomNav();
+    if (window.ChengNav && typeof ChengNav.apply === 'function') ChengNav.apply();
     const bottom = wantsBottomNav();
     document.documentElement.classList.toggle('aio-android-nav', on);
     document.body.classList.toggle('aio-android-nav', on);
@@ -763,15 +760,27 @@
 
   document.querySelectorAll('.nav-item, .bottom-item').forEach((el) => {
     el.addEventListener('click', () => {
-      if (el.dataset.module === 'more') {
+      if (el.dataset.module === 'more' || el.dataset.touch === 'more') {
         toggleMoreSheet();
         return;
       }
-      navigate(el.dataset.module);
+      const page = el.dataset.page || '';
+      navigate(el.dataset.module, {
+        force: !!page,
+        page: page,
+        touch: el.dataset.touch || undefined,
+      });
     });
   });
   document.querySelectorAll('#bnMoreSheet .bn-more-item').forEach((el) => {
-    el.addEventListener('click', () => navigate(el.dataset.module));
+    el.addEventListener('click', () => {
+      const page = el.dataset.page || '';
+      navigate(el.dataset.module, {
+        force: !!page,
+        page: page,
+        touch: el.dataset.touch || 'more',
+      });
+    });
   });
   moreSheet?.addEventListener('click', (e) => {
     if (e.target === moreSheet) closeMoreSheet();
@@ -1370,9 +1379,9 @@
   function apply(){
     try{
       var w = window.innerWidth || 0, h = window.innerHeight || 0;
-      var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')
-        || window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-      document.documentElement.classList.toggle('tablet-rail', !!((mobile || (navigator.maxTouchPoints || 0) > 0) && w > h && w >= 900 && Math.min(w, h) >= 560));
+      var touch = document.documentElement.classList.contains('use-bottom-nav');
+      /* Left rail on a tall tablet landscape. Short landscape keeps the chip row. */
+      document.documentElement.classList.toggle('tablet-rail', !!(touch && w > h && w >= 600 && w < 1366 && h >= 500));
     }catch(_e){}
   }
   apply();

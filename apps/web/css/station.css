@@ -1,0 +1,86 @@
+/**
+ * Engine-room tokens from the redesign mockups.
+ * Off unless <html class="station">, set by ?station=1 (stored as chengStation).
+ * ?station=0 clears it. Structure and data do not depend on this file.
+ */
+html.station {
+  --ink: #0b1218;
+  --bg0: #0b1218;
+  --bg1: #121a22;
+  --bg2: #0e161d;
+  --panel: rgba(18, 26, 34, 0.94);
+  --panel-solid: #141c24;
+  --line: rgba(230, 224, 210, 0.16);
+  --line-strong: rgba(230, 224, 210, 0.32);
+  --text: #e7e1d4;
+  --muted: #a39886;
+  --paper: #e7e1d4;
+  --brass: #c6a15a;
+  --brass-dim: #8a6a32;
+  --accent: #3d7ea6;
+  --accent-2: #c6a15a;
+  --teal: #2f8f86;
+  --danger: #c4473a;
+  --ok: #3f8f55;
+  --nav-bg: #10181f;
+  --nav-item-bg: transparent;
+  --nav-active-bg: #1c2832;
+  --font: Inter, "Segoe UI", "Helvetica Neue", sans-serif;
+  --mono: "JetBrains Mono", "IBM Plex Mono", Consolas, monospace;
+  background-color: #0b1218;
+  background-image:
+    linear-gradient(rgba(198, 161, 90, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(198, 161, 90, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+html.station.bright {
+  --ink: #e6e0d2;
+  --bg0: #e6e0d2;
+  --bg1: #efe8d8;
+  --bg2: #f4efe4;
+  --panel: rgba(255, 252, 245, 0.94);
+  --panel-solid: #f7f1e4;
+  --text: #1c2430;
+  --muted: #5c5346;
+  --paper: #1c2430;
+  --brass: #6e4814;
+  --nav-bg: #efe6d4;
+  --nav-active-bg: #e2d3b4;
+  background-color: #e6e0d2;
+  background-image:
+    linear-gradient(rgba(90, 60, 20, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(90, 60, 20, 0.06) 1px, transparent 1px);
+}
+
+html.station .panel,
+html.station .topbar,
+html.station .sidebar {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+html.station.use-bottom-nav .bottom-nav {
+  background: var(--nav-bg);
+  border-top: 1px solid var(--line-strong);
+}
+
+html.station.use-bottom-nav .bottom-item {
+  color: var(--muted);
+  background: transparent;
+}
+
+html.station.use-bottom-nav .bottom-item.active {
+  color: var(--text);
+  background: var(--nav-active-bg);
+  box-shadow: inset 0 2px 0 var(--brass);
+}
+
+html.station .bn-svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

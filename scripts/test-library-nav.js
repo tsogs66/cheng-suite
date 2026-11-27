@@ -25,8 +25,11 @@ assert.ok(!/>\s*Backup\s*</.test(nav), 'sidebar does not keep the short Backup l
 const more = html.slice(html.indexOf('id="bnMoreSheet"'), html.indexOf('id="aioReturnFabs"'));
 assert.ok(more.includes('Backup &amp; Sync'), 'phone More sheet uses the same name');
 const moreMods = [...more.matchAll(/data-module="([^"]+)"/g)].map((m) => m[1]);
-assert.deepStrictEqual(moreMods, ['notes', 'home', 'spares', 'vessel', 'eca', 'backup', 'license', 'about']);
-assert.strictEqual(moreMods.indexOf('notes') % 3, moreMods.indexOf('vessel') % 3, 'Notes sits above Setup in the More grid');
+for (const id of mods) {
+  assert.ok(moreMods.includes(id), 'More sheet includes every Windows item: ' + id);
+}
+assert.ok(more.includes('data-page="entry"'), 'Noon report is in More');
+assert.ok(more.includes('data-page="fuel-report"'), 'Soundings are in More');
 
 assert.ok(backup.includes("title: 'Backup & Sync'"));
 assert.ok(backup.includes('class="backup-lib-row"'));

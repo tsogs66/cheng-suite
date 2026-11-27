@@ -238,6 +238,13 @@ const FuelReport = (() => {
   /* ---------- page ---------- */
 
   async function render(main) {
+    try {
+      if (window.ChengNav && ChengNav.wantsSoundingCards()) {
+        document.documentElement.classList.add('sounding-cards');
+      } else {
+        document.documentElement.classList.remove('sounding-cards');
+      }
+    } catch (e) { /* layout class only */ }
     const bundle = currentBundle();
     let restoredDraft = false;
     /* Edits that never reached the saved copy (the program closed, the page was left in a hurry) come back. */
@@ -367,15 +374,15 @@ const FuelReport = (() => {
         ? `<button type="button" class="btn ghost small fr-di-btn" data-double-interp="${esc(row.tankId)}" title="Manual double interpolation">Double interp…</button>`
         : '';
       return `<tr data-tank="${esc(row.tankId)}">
-        <th class="fr-tank-name">${esc(row.name)}<span class="fr-move" data-fr-move="${esc(row.tankId)}"></span></th>
-        <td><select data-row="${esc(row.tankId)}" data-field="fuelType">${typeOpts}</select></td>
-        <td class="fr-actual-cell"><input type="number" step="any" data-row="${esc(row.tankId)}" data-field="reading" data-sheet-popup="actual" value="${esc(actualVal)}">${diBtn}</td>
-        <td>${methodCell}</td>
-        <td><input type="number" step="any" class="fr-narrow" data-row="${esc(row.tankId)}" data-field="tempC" data-sheet-popup="temp" value="${esc(f.tempC)}"></td>
-        <td><input type="number" step="any" class="fr-wide" data-row="${esc(row.tankId)}" data-field="unitValue" data-sheet-popup="sg" value="${esc(f.unitValue)}"></td>
-        <td class="fr-check"><input type="checkbox" data-row="${esc(row.tankId)}" data-field="inUse" ${row.inUse ? 'checked' : ''}></td>
+        <th class="fr-tank-name" data-label="Tank">${esc(row.name)}<span class="fr-move" data-fr-move="${esc(row.tankId)}"></span></th>
+        <td data-label="Fuel type"><select data-row="${esc(row.tankId)}" data-field="fuelType">${typeOpts}</select></td>
+        <td class="fr-actual-cell" data-label="Sounding"><input type="number" step="any" data-row="${esc(row.tankId)}" data-field="reading" data-sheet-popup="actual" value="${esc(actualVal)}">${diBtn}</td>
+        <td data-label="Method">${methodCell}</td>
+        <td data-label="Temp"><input type="number" step="any" class="fr-narrow" data-row="${esc(row.tankId)}" data-field="tempC" data-sheet-popup="temp" value="${esc(f.tempC)}"></td>
+        <td data-label="SG"><input type="number" step="any" class="fr-wide" data-row="${esc(row.tankId)}" data-field="unitValue" data-sheet-popup="sg" value="${esc(f.unitValue)}"></td>
+        <td class="fr-check" data-label="In use"><input type="checkbox" data-row="${esc(row.tankId)}" data-field="inUse" ${row.inUse ? 'checked' : ''}></td>
         ${COMPUTED_COLUMNS.map((c) =>
-          `<td class="fr-calc" data-fr-cell="${esc(row.tankId)}.${c.field}"></td>`).join('')}
+          `<td class="fr-calc" data-label="${esc(c.label)}" data-fr-cell="${esc(row.tankId)}.${c.field}"></td>`).join('')}
       </tr>`;
     }).join('');
 
