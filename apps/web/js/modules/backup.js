@@ -973,6 +973,10 @@
               voyageError: voyageError || null,
               companion: extra ? extra.collectCompanion(localStorage) : null,
             };
+            if (window.ChengCe && ChengCe.attachSuiteChecksums) {
+              progressSet(86, 'Checksumming each part…');
+              await ChengCe.attachSuiteChecksums(suite);
+            }
             progressSet(90, 'Saving the file…');
             await progressYield();
             const saved = await downloadJson(`cheng-aio-suite-${Date.now()}.json`, suite);
@@ -1012,6 +1016,15 @@
           }
           if (!payload.tank && !payload.voyage) {
             throw new Error('This entire-program file holds neither a Tank nor a Voyage database.');
+          }
+          let integrityWarning = '';
+          if (window.ChengCe && ChengCe.checkSuite) {
+            progressSet(13, 'Checking checksums…');
+            const verdict = await ChengCe.checkSuite(payload);
+            if (!verdict.ok) {
+              throw new Error('Integrity check failed: ' + (verdict.failed || []).join(', '));
+            }
+            integrityWarning = verdict.warning || '';
           }
           const verb = merge ? 'Merge into' : 'REPLACE';
           if (!confirm(`${verb} this device from the entire-program file?\n\n${suiteSummary(payload)}\n\n${
@@ -1073,7 +1086,7 @@
           try { await ChengPro.vessel.refresh(); } catch { /* ignore */ }
 
           if (!done.length) throw new Error(failed.join(' · ') || 'Nothing was restored');
-          const summary = `Restored ${done.join(' · ')}${failed.length ? ` — but ${failed.join(' · ')}` : ''}`;
+          const summary = `Restored ${done.join(' · ')}${failed.length ? ` — but ${failed.join(' · ')}` : ''}${integrityWarning ? ' ' + integrityWarning : ''}`;
           setSuite(summary);
           toast(failed.length ? 'Restored with errors — see status' : 'Entire program restored');
           return summary;

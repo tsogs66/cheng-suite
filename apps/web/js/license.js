@@ -407,6 +407,7 @@
 
   function moduleAllowed(moduleId, ent) {
     if (moduleId === 'license' || moduleId === 'home' || moduleId === 'about' || moduleId === 'notes') return true;
+    if (moduleId === 'ce-rob' || moduleId === 'ce-inspect' || moduleId === 'ce-alerts' || moduleId === 'ce-summary') return true;
     return modulesAllowed(ent).includes(moduleId);
   }
 

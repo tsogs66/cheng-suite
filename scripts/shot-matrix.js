@@ -114,9 +114,9 @@ function waitHttp(url, tries) {
   await new Promise((r) => setTimeout(r, 600));
   await send('Runtime.evaluate', {
     expression: `(async () => {
-      const stores = ['meta','entries','receipts','documents','abstracts','printHistory','voyageLegs','voyageLegParts','orbEntries','deletedBackup','dbSnapshots','dbSnapshotParts','syncLog','syncPieces'];
+      const stores = ['meta','entries','receipts','documents','abstracts','printHistory','voyageLegs','voyageLegParts','orbEntries','deletedBackup','dbSnapshots','dbSnapshotParts','syncLog','syncPieces','robRecon','auditLog','voyageBriefs'];
       const db = await new Promise((resolve, reject) => {
-        const req = indexedDB.open('noonReportDB', 11);
+        const req = indexedDB.open('noonReportDB', 12);
         req.onupgradeneeded = () => {
           const d = req.result;
           stores.forEach((name) => {

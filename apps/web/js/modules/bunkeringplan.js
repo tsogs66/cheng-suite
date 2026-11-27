@@ -50,6 +50,7 @@ window.ChengProModules.bunkeringplan = {
     }
     const src = ChengPro.tankEmbedUrl({ page: 'bunker-plan', bunkerEmbed: '1' });
     root.innerHTML = `
+      <div class="ce-banner-slot"></div>
       <div class="bunker-file-bar" id="bunkerFileBar">
         <span>Bunker file</span>
         <button type="button" class="btn" data-file-mod="bunkeringplan">Plan</button>
@@ -67,6 +68,7 @@ window.ChengProModules.bunkeringplan = {
         ></iframe>
       </div>`;
     bindBunkerFile(root);
+    if (window.ChengCeUI) ChengCeUI.paintBanner(root);
   },
 };
 

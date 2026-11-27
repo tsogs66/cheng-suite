@@ -56,6 +56,7 @@ window.ChengProModules.home = {
           <button type="button" class="home-action" id="goRobFromHome" title="Open Voyage Chief ROB">ROB</button>
         </div>
         <div class="gauge-grid" id="fuelDualGauges"></div>
+        <div id="ceHomeBand"></div>
       </section>
 
       <section class="panel home-pane" id="homeTanksPanel" data-pane="tanks">
@@ -129,6 +130,7 @@ window.ChengProModules.home = {
       window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'bunkerplan' })));
     root.querySelector('#goBunkerPlanFromHome')?.addEventListener('click', () =>
       window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'bunkeringplan' })));
+    if (window.ChengCeUI) ChengCeUI.paintHome(root);
 
     let voyageSnap = null;
 

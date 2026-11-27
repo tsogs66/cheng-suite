@@ -320,3 +320,11 @@ html.station:has(.bk-nav) table thead th {
     min-height: 44px;
   }
 }
+@media (pointer: coarse) {
+  html.station .fuel-report-page input[type="number"],
+  html.station .bunker-page input[type="number"],
+  html.station input[data-bp] {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}

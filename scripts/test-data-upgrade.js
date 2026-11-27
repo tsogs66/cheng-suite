@@ -33,7 +33,10 @@ assert.strictEqual(
 );
 
 const voyage = read('modules/voyage/www/voyage_manager.html');
-assert.match(voyage, /indexedDB\.open\('noonReportDB',\s*11\)/);
+assert.match(voyage, /indexedDB\.open\('noonReportDB',\s*12\)/);
+assert.match(voyage, /if \(!d\.objectStoreNames\.contains\('robRecon'\)\)/);
+assert.match(voyage, /if \(!d\.objectStoreNames\.contains\('auditLog'\)\)/);
+assert.match(voyage, /if \(!d\.objectStoreNames\.contains\('voyageBriefs'\)\)/);
 assert.match(voyage, /const DB_BACKUP_FORMAT = 'noon-report-db-v1'/);
 assert.match(voyage, /const VESSEL_EXPORT_FORMAT = 'noon-report-vessel-v1'/);
 assert.doesNotMatch(voyage, /deleteObjectStore/);

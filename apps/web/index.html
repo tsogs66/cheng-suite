@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/css/shell.css">
   <link rel="stylesheet" href="/css/station.css">
   <link rel="stylesheet" href="/css/station-pages.css">
+  <link rel="stylesheet" href="/css/ce.css">
   <script src="/js/station-boot.js"></script>
   <script src="/js/nav-mode.js"></script>
   <link rel="stylesheet" href="/css/hud-effects.css">
@@ -127,6 +128,10 @@
           <button type="button" class="nav-item" data-module="license"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="14" r="3"/><path d="M11 14h9v3h-3v-3"/></svg></span>License</button>
           <button type="button" class="nav-item" data-module="about"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg></span>About</button>
           <div class="nav-label">Voyage</div>
+          <button type="button" class="nav-item" data-module="ce-rob"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 19V5h4l2 4h6v10z"/></svg></span>ROB reconciliation</button>
+          <button type="button" class="nav-item" data-module="ce-alerts"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4l8 14H4z"/></svg></span>Limit alerts</button>
+          <button type="button" class="nav-item" data-module="ce-summary"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V9M10 19V5M15 19v-7M20 19V8"/></svg></span>Voyage summary</button>
+          <button type="button" class="nav-item" data-module="ce-inspect"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6zM9 12h6"/></svg></span>Pre-inspection</button>
           <button type="button" class="nav-item" data-module="voyage" data-page="entry"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg></span>Log Entry</button>
           <button type="button" class="nav-item" data-module="voyage" data-page="rob"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 19V5h4l2 4h6v10z"/></svg></span>ROB</button>
           <button type="button" class="nav-item" data-module="voyage" data-page="consumption"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V9M10 19V5M15 19v-7M20 19V8"/></svg></span>Consumption</button>
@@ -204,6 +209,9 @@
           <button type="button" class="bn-more-item" data-module="spares"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span><span>Spares</span></button>
           <button type="button" class="bn-more-item" data-module="notes"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/><path d="M9 12h6"/></svg></span><span>Notes</span></button>
           <div class="bn-more-label">Voyage</div>
+          <button type="button" class="bn-more-item" data-module="ce-rob"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 19V5h4l2 4h6v10z"/></svg></span><span>ROB reconciliation</span></button>
+          <button type="button" class="bn-more-item" data-module="ce-alerts"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M12 4l8 14H4z"/></svg></span><span>Limit alerts</span></button>
+          <button type="button" class="bn-more-item" data-module="ce-summary"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M5 19V9M10 19V5M15 19v-7M20 19V8"/></svg></span><span>Voyage summary</span></button>
           <button type="button" class="bn-more-item" data-module="voyage" data-page="summary"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m15 9-3 7-1-3-3-1z"/></svg></span><span>Voyage</span></button>
           <button type="button" class="bn-more-item" data-module="bunkerplan"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 16l5-6 4 3 7-8"/></svg></span><span>Consumption Plan</span></button>
           <button type="button" class="bn-more-item" data-module="eca"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M3 14c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/></svg></span><span>ECA</span></button>
@@ -240,6 +248,7 @@
           <button type="button" class="bn-more-item" data-module="tanks" data-page="settings"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M8 7l4-4 4 4M12 3v12"/></svg></span><span>Tank backup</span></button>
           <button type="button" class="bn-more-item" data-module="tanks" data-page="about"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5"/></svg></span><span>Tank Chief</span></button>
           <div class="bn-more-label">Ship</div>
+          <button type="button" class="bn-more-item" data-module="ce-inspect"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/></svg></span><span>Pre-inspection</span></button>
           <button type="button" class="bn-more-item" data-module="vessel"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M12 11v8"/></svg></span><span>Vessel Setup</span></button>
           <button type="button" class="bn-more-item" data-module="backup"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M8 7l4-4 4 4M12 3v12"/></svg></span><span>Backup &amp; Sync</span></button>
           <button type="button" class="bn-more-item" data-module="license"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="8" cy="14" r="3"/><path d="M11 14h9"/></svg></span><span>License</span></button>
@@ -290,6 +299,7 @@
   <script src="/js/perf-calc.js"></script>
   <script src="/js/modules/home.js"></script>
   <script src="/js/modules/vessel.js"></script>
+  <script src="/js/ce-logic.js"></script>
   <script src="/js/modules/backup.js"></script>
   <script src="/js/modules/performance.js"></script>
   <script src="/js/modules/voyage.js"></script>
@@ -305,6 +315,7 @@
   <script src="/js/note-reminders.js"></script>
   <script src="/js/modules/notes.js"></script>
   <script src="/js/clock-picker.js"></script>
+  <script src="/js/modules/ce.js"></script>
   <script src="/js/shell.js"></script>
   <script>try{ ChengClockPicker && ChengClockPicker.install(); }catch(_e){}</script>
 </body>

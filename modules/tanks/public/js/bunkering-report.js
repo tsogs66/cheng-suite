@@ -170,7 +170,18 @@ const BunkerReports = (() => {
     if (!d || !draftTimers[path]) return;
     clearTimeout(draftTimers[path]); delete draftTimers[path];
     if (!d.live()) return;
-    try { await saveChainPart(path, d.part, d.form(), { snapshot: false, quiet: true, draft: true }); }
+    try {
+      await saveChainPart(path, d.part, d.form(), { snapshot: false, quiet: true, draft: true });
+      let line = document.getElementById('bpDraftLine');
+      if (!line) {
+        line = document.createElement('div');
+        line.id = 'bpDraftLine';
+        line.className = 'ce-draft';
+        line.setAttribute('role', 'status');
+        document.body.appendChild(line);
+      }
+      line.textContent = 'Draft saved';
+    }
     catch (err) { console.warn('draft', path, err); }
   }
 
@@ -196,6 +207,11 @@ const BunkerReports = (() => {
       setTimeout(() => scheduleDraft(path), 0);   // after the page's own handlers have taken this edit
     };
     wrap.addEventListener('input', edited);
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+      wrap.querySelectorAll('input[type="number"]').forEach((el) => {
+        if (!el.getAttribute('inputmode')) el.setAttribute('inputmode', 'decimal');
+      });
+    }
     wrap.addEventListener('change', edited);
   }
 

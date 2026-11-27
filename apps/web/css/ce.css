@@ -1,0 +1,36 @@
+/* Chief-engineer pages. Night is the engine-room default (no .bright on html). */
+.ce-page { display: flex; flex-direction: column; gap: 12px; }
+.ce-page h2 { margin: 0; }
+.ce-banner, .ce-lock-bar {
+  background: rgba(196, 92, 42, 0.16);
+  border: 1px solid rgba(196, 92, 42, 0.55);
+  color: var(--text, #e8eef6);
+  border-radius: 10px;
+  padding: 10px 12px;
+  line-height: 1.4;
+}
+.ce-ok { background: rgba(46, 125, 90, 0.16); border-color: rgba(46, 125, 90, 0.5); }
+.ce-meta { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; }
+.ce-meta label { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; }
+.ce-meta input, .ce-page input, .ce-page select, .ce-page button.btn {
+  min-height: 44px;
+  font-size: 1rem;
+}
+.ce-table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.ce-table th, .ce-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); white-space: nowrap; }
+.ce-warn { color: #e7a15a; font-weight: 650; }
+.ce-draft {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 20;
+  font-size: 0.85rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(10, 20, 32, 0.92);
+  color: #d5e2f0;
+}
+html.use-bottom-nav .ce-draft { bottom: 76px; }
+@media print {
+  .ce-banner, .ce-lock-bar, .ce-draft, #ceAlertBanner, #ceDraftLine, #frDraftLine, #bpDraftLine { display: none !important; }
+}
