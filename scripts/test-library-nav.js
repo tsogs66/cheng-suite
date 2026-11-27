@@ -10,6 +10,7 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'apps/web/index.html'), 'utf8');
 const backup = fs.readFileSync(path.join(root, 'apps/web/js/modules/backup.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'apps/web/css/shell.css'), 'utf8');
+const station = fs.readFileSync(path.join(root, 'apps/web/css/station.css'), 'utf8');
 
 const nav = html.slice(html.indexOf('id="mainNav"'), html.indexOf('id="sidebarFooter"'));
 const mods = [...nav.matchAll(/data-module="([^"]+)"/g)].map((m) => m[1]);
@@ -63,4 +64,8 @@ assert.ok(css.includes('.backup-lib-row'));
 assert.ok(/\.backup-lib-row\s*\{[^}]*align-items:\s*start/.test(css));
 assert.ok(css.includes('@media (max-width: 1180px)') && css.includes('.backup-lib-row { grid-template-columns: minmax(0, 1fr); }'));
 
+assert.ok(station.includes('.bn-more-item[data-module="voyage"] .nav-plate'), 'More sheet plates use the same colours as the sidebar');
+assert.ok(station.includes('.bottom-item[data-touch="noon"] .bn-svg'), 'noon keeps its own plate');
+assert.ok(!/bottom-item \.bn-svg \{[^}]*background:\s*transparent/.test(station), 'bottom bar icons are not flattened');
+assert.ok(station.includes('linear-gradient(165deg'), 'icon plates keep a bevel');
 console.log('library nav ok');
