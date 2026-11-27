@@ -1,0 +1,199 @@
+/**
+ * Gaugings, filed reports and open drafts survive a merge.
+ *
+ * A backup merge and a sync used to replace the readings map and the open
+ * sheet. A sounding that existed on only one side disappeared, and a draft
+ * did too. These checks are the rule: keep the side that has it, and where
+ * both have it keep the newer stamp.
+ */
+'use strict';
+
+const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tank-live-'));
+process.env.TMS_DATA_DIR = dataDir;
+process.env.CHENG_PRO_DATA_DIR = dataDir;
+
+const store = require('../server/store.js');
+
+let pass = 0;
+const is = (got, want, what) => {
+  assert.deepStrictEqual(got, want, what);
+  pass += 1;
+};
+
+const vessel = store.createVessel({ name: 'MV Live Parts' });
+const id = vessel.id;
+
+store.saveVesselPart(id, 'readings', {
+  a: { reading: 1, savedAt: '2026-10-01T00:00:00.000Z' },
+  b: { reading: 2, savedAt: '2026-10-02T00:00:00.000Z' },
+});
+store.saveVesselPart(id, 'readings', {
+  a: { reading: 9, savedAt: '2026-09-01T00:00:00.000Z' },
+  c: { reading: 3, savedAt: '2026-10-03T00:00:00.000Z' },
+});
+const readings = store.getVesselBundle(id).readings;
+is(readings.a.reading, 1, 'an older gauging does not replace a newer one');
+is(readings.b.reading, 2, 'a tank sounded on only one side stays');
+is(readings.c.reading, 3, 'a tank sounded on the incoming side is added');
+
+store.saveVesselPart(id, 'fuelReport', { header: { voyageNo: '1' }, updatedAt: '2026-10-04T00:00:00.000Z' });
+store.saveVesselPart(id, 'fuelReport', { header: { voyageNo: '2' }, updatedAt: '2026-10-05T00:00:00.000Z' });
+store.saveVesselPart(id, 'fuelReport', { header: { voyageNo: '0' }, updatedAt: '2026-10-03T00:00:00.000Z' });
+store.saveVesselPart(id, 'fuelReport', null);
+is(store.getVesselBundle(id).fuelReport.header.voyageNo, '2', 'a blank or older sheet does not erase the open draft');
+
+store.saveVesselPart(id, 'reportHistory', [{ id: 'r1', savedAt: '2026-10-01T00:00:00.000Z', title: 'local' }]);
+store.saveVesselPart(id, 'tankSummaryDraft', { note: 'open summary', updatedAt: '2026-10-06T00:00:00.000Z' });
+
+const backup = store.exportBackup();
+const copy = JSON.parse(JSON.stringify(backup));
+const row = copy.vessels[id];
+row.readings = { d: { reading: 4, savedAt: '2026-10-07T00:00:00.000Z' } };
+row.reportHistory = [{ id: 'r2', savedAt: '2026-10-02T00:00:00.000Z', title: 'file' }];
+row.fuelReport = null;
+row.tankSummaryDraft = null;
+store.importBackup(copy, { merge: true });
+
+const after = store.getVesselBundle(id);
+is(after.readings.b.reading, 2, 'merge restore keeps gaugings the file does not carry');
+is(after.readings.d.reading, 4, 'merge restore adds gaugings the file carries');
+is(after.reportHistory.map((r) => r.id).sort(), ['r1', 'r2'], 'merge restore unions saved reports');
+is(after.fuelReport.header.voyageNo, '2', 'merge restore keeps a draft the file leaves blank');
+is(after.tankSummaryDraft.note, 'open summary', 'merge restore keeps the tank-summary draft');
+
+const remote = JSON.parse(JSON.stringify(store.syncPushBundle()));
+remote.vessels[id].meta = { ...(remote.vessels[id].meta || {}), revision: 0 };
+remote.vessels[id].readings = {
+  e: { reading: 5, savedAt: '2026-10-08T00:00:00.000Z' },
+};
+remote.vessels[id].reportHistory = [
+  { id: 'r3', savedAt: '2026-10-09T00:00:00.000Z', title: 'peer' },
+];
+const results = store.applySyncPayload(remote);
+is(results[0].action, 'kept-local', 'a lower peer revision does not replace the vessel');
+const synced = store.getVesselBundle(id);
+is(synced.readings.e.reading, 5, 'a lower revision still brings a gauging that exists only on the peer');
+is(synced.readings.b.reading, 2, 'keeping the local revision still keeps local gaugings');
+is(synced.reportHistory.some((r) => r.id === 'r3'), true, 'a lower revision still brings a saved report');
+
+store.saveVesselPart(id, 'bunkerHistory', {
+  plans: [{ id: 'plan-local', savedAt: '2026-10-11T00:00:00.000Z', port: 'Manila', form: { header: { port: 'Manila' } } }],
+  after: [],
+  summaries: [],
+});
+const exported = store.exportBackup();
+is(
+  exported.vessels[id].bunkerHistory.plans.some((p) => p.id === 'plan-local'),
+  true,
+  'backup carries the bunker monitoring plan'
+);
+
+const userRoot = path.join(dataDir, 'users', 'chief');
+const userVessel = path.join(userRoot, 'vessels', id);
+fs.mkdirSync(userVessel, { recursive: true });
+fs.writeFileSync(path.join(userRoot, 'vessels-index.json'), JSON.stringify({
+  vessels: [{ id, name: 'MV Live Parts', imo: '' }],
+}));
+fs.writeFileSync(path.join(userVessel, 'vessel.json'), JSON.stringify({ id, name: 'MV Live Parts' }));
+fs.writeFileSync(path.join(userVessel, 'meta.json'), JSON.stringify({ revision: 0 }));
+fs.writeFileSync(path.join(userVessel, 'bunker-history.json'), JSON.stringify({
+  plans: [],
+  after: [{ id: 'after-user', savedAt: '2026-10-12T00:00:00.000Z', port: 'Singapore' }],
+  summaries: [{ id: 'sum-user', savedAt: '2026-10-12T01:00:00.000Z', port: 'Singapore' }],
+}));
+
+const pushed = store.syncPushBundle();
+const filed = pushed.vessels[id].bunkerHistory;
+is(filed.plans.some((p) => p.id === 'plan-local'), true, 'sync upload keeps the bunker plan from the newer copy');
+is(filed.summaries.some((p) => p.id === 'sum-user'), true, 'sync upload keeps a bunker summary that exists only on the older copy');
+is(filed.after.some((p) => p.id === 'after-user'), true, 'sync upload keeps a bunker delivery report from the other database');
+
+const incoming = JSON.parse(JSON.stringify(pushed));
+incoming.vessels[id].meta = { ...(incoming.vessels[id].meta || {}), revision: 999 };
+incoming.vessels[id].bunkerHistory = {
+  plans: [{ id: 'plan-peer', savedAt: '2026-10-13T00:00:00.000Z', port: 'Busan' }],
+  after: [],
+  summaries: [],
+};
+store.applySyncPayload(incoming);
+const office = JSON.parse(fs.readFileSync(path.join(userVessel, 'bunker-history.json'), 'utf8'));
+is(office.plans.some((p) => p.id === 'plan-peer'), true, 'a download files the bunker plan in the license folder as well as the root');
+is(office.summaries.some((p) => p.id === 'sum-user'), true, 'downloading the peer plan keeps the office bunker summary');
+const rootAgain = store.getVesselBundle(id).bunkerHistory;
+is(rootAgain.plans.some((p) => p.id === 'plan-local'), true, 'the saved bunker plan survives the peer download');
+is(rootAgain.plans.some((p) => p.id === 'plan-peer'), true, 'the peer bunker plan is stored after download');
+
+const userRootOffice = path.join(dataDir, 'users', 'office');
+const officeOther = path.join(userRootOffice, 'vessels', 'office-flag');
+fs.mkdirSync(officeOther, { recursive: true });
+fs.writeFileSync(path.join(userRootOffice, 'vessels-index.json'), JSON.stringify({
+  vessels: [{ id: 'office-flag', name: 'MV Live Parts', imo: '' }],
+}));
+fs.writeFileSync(path.join(officeOther, 'vessel.json'), JSON.stringify({ id: 'office-flag', name: 'MV Live Parts' }));
+fs.writeFileSync(path.join(officeOther, 'meta.json'), JSON.stringify({ revision: 1 }));
+fs.writeFileSync(path.join(officeOther, 'report-history.json'), JSON.stringify([]));
+store.saveVesselPart(id, 'reportHistory', [{
+  id: 'mon-save',
+  savedAt: '2026-10-21T00:00:00.000Z',
+  reportType: 'Monitoring',
+  title: 'Monitoring',
+}]);
+const officeReports = JSON.parse(fs.readFileSync(path.join(officeOther, 'report-history.json'), 'utf8'));
+is(officeReports.some((r) => r.id === 'mon-save' && r.reportType === 'Monitoring'), true, 'saving a monitoring report reaches the office copy of the same ship');
+
+store.updateVesselDetails(id, { imo: '9619799', name: 'MV Live Parts' });
+const uploaded = {
+  format: 'vessel-fuel-tms-sync',
+  vessels: {
+    'uploaded-copy': {
+      vessel: { id: 'uploaded-copy', name: 'M/V Live Parts', imo: '9619799' },
+      meta: { revision: 50 },
+      reportHistory: [{ id: 'from-server', savedAt: '2026-10-29T00:00:00.000Z', title: 'Uploaded' }],
+    },
+    stranger: {
+      vessel: { id: 'stranger', name: 'MV Other Ship', imo: '1234567' },
+      meta: { revision: 1 },
+      reportHistory: [{ id: 'not-mine', savedAt: '2026-10-29T00:00:00.000Z' }],
+    },
+  },
+};
+const picked = store.selectSyncVessels(uploaded, { id, name: 'MV Live Parts', imo: '9619799' });
+is(Object.keys(picked.vessels), ['uploaded-copy'], 'a pull for this ship ignores a different ship');
+const landed = store.applySyncPayload(picked);
+is(landed.some((r) => r.id === id && r.fromId === 'uploaded-copy'), true, 'files uploaded under another id land on this ship');
+is(store.listVessels().some((v) => v.id === 'uploaded-copy' || v.id === 'stranger'), false, 'the upload does not open a second ship');
+is(store.getVesselBundle(id).reportHistory.some((r) => r.id === 'from-server'), true, 'the uploaded report is on this ship');
+is(store.getVesselBundle(id).vessel.id, id, 'the ship keeps its own id');
+
+store.saveVesselPart(id, 'tanks', {
+  fuel: [{ id: 'tk1', name: 'HFO 1', capacity: 100 }],
+  lube: [], misc: [], water: [],
+});
+store.saveVesselPart(id, 'tanks', { fuel: [], lube: [], misc: [], water: [] });
+is(store.getVesselBundle(id).tanks.fuel.map((t) => t.id), ['tk1'], 'an empty tank book does not replace a filled one');
+const bare = store.createVessel({ name: 'M/V Live Parts', imo: '9619799' });
+is(store.getVesselBundle(bare.id).tanks.fuel.map((t) => t.id), ['tk1'], 'opening the bare copy of this hull loads the tank book');
+store.setUserScope({ email: 'dev@cheng.local', master: false });
+const scoped = store.createVessel({ name: 'MV Live Parts', imo: '9619799' });
+is(store.getVesselBundle(scoped.id).tanks.fuel.map((t) => t.id), ['tk1'], 'the licensed folder loads the tank book kept at the root');
+store.setUserScope({ email: null, master: false });
+
+const roundTrip = store.exportBackup();
+const freshDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tank-live-restore-'));
+process.env.TMS_DATA_DIR = freshDir;
+process.env.CHENG_PRO_DATA_DIR = freshDir;
+delete require.cache[require.resolve('../public/js/store-core.js')];
+delete require.cache[require.resolve('../server/store.js')];
+const restored = require('../server/store.js');
+restored.importBackup(roundTrip, { merge: true });
+const back = restored.getVesselBundle(id).bunkerHistory;
+is(back.plans.map((p) => p.id).sort(), ['plan-local', 'plan-peer'], 'restore brings every saved bunker plan');
+is(back.summaries.some((p) => p.id === 'sum-user'), true, 'restore brings the bunker summary');
+is(back.after.some((p) => p.id === 'after-user'), true, 'restore brings the bunker delivery report');
+
+console.log('live parts merge ok (' + pass + ')');

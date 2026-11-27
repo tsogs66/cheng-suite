@@ -1,0 +1,120 @@
+/*
+ * Android: the generated project has the alarm classes, the manifest lets them
+ * ring and survive a reboot, running the prep twice changes nothing, and the
+ * Java compiles when an android.jar is at hand (ANDROID_JAR=… to opt in).
+ *
+ * Run: node scripts/test-android-reminders.js
+ */
+'use strict';
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+const ROOT = path.join(__dirname, '..');
+let fails = 0, checks = 0;
+function check(label, ok) {
+  checks += 1;
+  console.log(ok ? `  ok   ${label}` : `  FAIL ${label}`);
+  if (!ok) fails += 1;
+}
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cheng-android-'));
+fs.mkdirSync(path.join(tmp, 'scripts'));
+for (const f of ['android-release-prep.js', 'apply-android-print-bridge.js', 'android-reminders-java.js']) {
+  fs.copyFileSync(path.join(ROOT, 'scripts', f), path.join(tmp, 'scripts', f));
+}
+fs.writeFileSync(path.join(tmp, 'scripts', 'apply-android-icons.js'), '');
+fs.copyFileSync(path.join(ROOT, 'package.json'), path.join(tmp, 'package.json'));
+fs.mkdirSync(path.join(tmp, 'signing'));
+fs.copyFileSync(path.join(ROOT, 'signing', 'chengpro-sideload.keystore'), path.join(tmp, 'signing', 'chengpro-sideload.keystore'));
+const main = path.join(tmp, 'android/app/src/main');
+const pkgDir = path.join(main, 'java/marine/chengpro/app');
+fs.mkdirSync(pkgDir, { recursive: true });
+fs.writeFileSync(path.join(tmp, 'android/app/build.gradle'), 'android {\n  buildTypes {\n    release {\n      minifyEnabled false\n    }\n  }\n  versionCode 1\n  versionName "1"\n}\n');
+fs.writeFileSync(path.join(main, 'AndroidManifest.xml'),
+  '<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <application android:label="x">\n        <activity android:name=".MainActivity" android:exported="true" />\n    </application>\n</manifest>\n');
+
+const run = () => execFileSync(process.execPath, [path.join(tmp, 'scripts/android-release-prep.js')], { cwd: tmp, stdio: 'pipe' });
+run();
+const manifest1 = fs.readFileSync(path.join(main, 'AndroidManifest.xml'), 'utf8');
+run();
+const manifest2 = fs.readFileSync(path.join(main, 'AndroidManifest.xml'), 'utf8');
+
+console.log('\nthe project');
+for (const f of ['ReminderScheduler', 'ReminderReceiver', 'ReminderBootReceiver', 'ReminderBridge', 'SpeechBridge', 'BunkerAlarmScheduler', 'BunkerAlarmReceiver', 'BunkerAlarmBridge', 'MainActivity']) {
+  check(f + '.java is generated', fs.existsSync(path.join(pkgDir, f + '.java')));
+}
+const activity = fs.readFileSync(path.join(pkgDir, 'MainActivity.java'), 'utf8');
+check('the page can reach the bridge as ChengAndroidReminders', /addJavascriptInterface\(new ReminderBridge\(this\), "ChengAndroidReminders"\)/.test(activity));
+check('the page can reach the tablet\'s own speech engine as ChengAndroidSpeech', /addJavascriptInterface\(new SpeechBridge\(this, webView\), "ChengAndroidSpeech"\)/.test(activity));
+const speechSrc = fs.readFileSync(path.join(pkgDir, 'SpeechBridge.java'), 'utf8');
+check('speech uses the Android TextToSpeech engine', /new TextToSpeech\(/.test(speechSrc));
+check('and prefers a voice stored on the device, since an online one says nothing at sea', /isNetworkConnectionRequired\(\)\) continue/.test(speechSrc));
+check('and tells the page when the order is spoken', /cheng-tts/.test(speechSrc));
+console.log('\nbunkering warnings with the tablet locked');
+const bsched = fs.readFileSync(path.join(pkgDir, 'BunkerAlarmScheduler.java'), 'utf8');
+const brecv = fs.readFileSync(path.join(pkgDir, 'BunkerAlarmReceiver.java'), 'utf8');
+const bbridge = fs.readFileSync(path.join(pkgDir, 'BunkerAlarmBridge.java'), 'utf8');
+check('the page can reach the alarm service as ChengAndroidBunker', /addJavascriptInterface\(new BunkerAlarmBridge\(this\), "ChengAndroidBunker"\)/.test(activity));
+check('each warning is set with the system clock, so it fires through Doze and a locked screen', /setAlarmClock/.test(bsched));
+check('the whole run is replaced on each sync, so a changed projection leaves nothing stale', /cancelAll\(ctx, stored\(ctx\)\)/.test(bsched));
+check('they are put back after a reboot', /BunkerAlarmScheduler\.restore/.test(fs.readFileSync(path.join(pkgDir, 'ReminderBootReceiver.java'), 'utf8')));
+check('the app stays quiet while the page is awake and sounding for itself', /pageAwake\(app\)\) return/.test(brecv));
+check('a silenced tank stays quiet, but never into the last minute', /minsLeft <= FINAL_MINUTE\) return false/.test(bsched) && /FINAL_MINUTE = 1\.0/.test(bsched));
+check('the order is spoken in the tablet\'s own voice, a local one', /new TextToSpeech\(/.test(brecv) && /isNetworkConnectionRequired\(\)\) continue/.test(brecv));
+check('shown on the lock screen with a Silence action', /setFullScreenIntent/.test(brecv) && /Silence 3 min/.test(brecv) && /VISIBILITY_PUBLIC/.test(brecv));
+check('the device stays awake long enough to say it', /PARTIAL_WAKE_LOCK/.test(brecv));
+check('and the screen is kept on while fuel is going aboard', /FLAG_KEEP_SCREEN_ON/.test(bbridge));
+check('the alarm receiver is registered, and private', /<receiver android:name="\.BunkerAlarmReceiver" android:exported="false"/.test(manifest1));
+check('it may use a full-screen notification and hold a wake lock', /USE_FULL_SCREEN_INTENT/.test(manifest1) && /android\.permission\.WAKE_LOCK/.test(manifest1));
+check('the activity shows over the lock screen and turns the display on', /showWhenLocked="true"/.test(manifest1) && /turnScreenOn="true"/.test(manifest1));
+check('running the prep twice does not repeat the attributes', (manifest2.match(/showWhenLocked/g) || []).length === 1);
+console.log('');
+const sched = fs.readFileSync(path.join(pkgDir, 'ReminderScheduler.java'), 'utf8');
+check('alarms go to the system clock (rings in Doze, needs no exact-alarm permission)', /setAlarmClock/.test(sched));
+check('the whole set is replaced on each sync', /cancel\(ctx, stored\(ctx\)\)/.test(sched));
+const bridge = fs.readFileSync(path.join(pkgDir, 'ReminderBridge.java'), 'utf8');
+check('a note\'s event is written straight into the calendar', /upsertCalendarEvent/.test(bridge) && /cr\.insert\(CalendarContract\.Events\.CONTENT_URI/.test(bridge));
+check('and an edit updates that same event, remembered by the note id', /cr\.update\(ContentUris\.withAppendedId\(CalendarContract\.Events\.CONTENT_URI/.test(bridge) && /prefs\.getLong\(noteId/.test(bridge));
+check('with its alert replaced rather than doubled', /Reminders\.CONTENT_URI/.test(bridge) && /cr\.delete\(CalendarContract\.Reminders\.CONTENT_URI/.test(bridge));
+check('and removed when the note is deleted', /removeCalendarEvent/.test(bridge));
+check('the calendar\'s own event screen stays as the fallback if access is refused', /ACTION_INSERT/.test(bridge));
+check('calendar access is declared', /android\.permission\.READ_CALENDAR/.test(manifest1) && /android\.permission\.WRITE_CALENDAR/.test(manifest1));
+
+console.log('\nthe manifest');
+for (const perm of ['POST_NOTIFICATIONS', 'RECEIVE_BOOT_COMPLETED']) {
+  check(perm + ' is requested', manifest1.includes('android.permission.' + perm));
+}
+check('the alarm receiver is registered, and private', /<receiver android:name="\.ReminderReceiver" android:exported="false"/.test(manifest1));
+check('the boot receiver puts alarms back after a reboot and an update',
+  /BOOT_COMPLETED/.test(manifest1) && /MY_PACKAGE_REPLACED/.test(manifest1));
+check('the speech engines are visible to the app on Android 11+, or it cannot start one', /android\.intent\.action\.TTS_SERVICE/.test(manifest1));
+check('the calendar app stays visible to the check on Android 11+', /android\.intent\.action\.INSERT/.test(manifest1));
+check('running the prep again changes nothing', manifest1 === manifest2);
+check('and adds no second receiver', (manifest2.match(/\.ReminderReceiver"/g) || []).length === 1);
+
+console.log('\nthe Java');
+const jar = process.env.ANDROID_JAR;
+if (jar && fs.existsSync(jar)) {
+  const stub = path.join(tmp, 'stub/androidx/appcompat/app');
+  fs.mkdirSync(stub, { recursive: true });
+  fs.writeFileSync(path.join(stub, 'AppCompatActivity.java'), 'package androidx.appcompat.app; public class AppCompatActivity extends android.app.Activity {}');
+  const cap = process.env.CAPACITOR_JAR;
+  const reminderFiles = ['ReminderScheduler', 'ReminderReceiver', 'ReminderBootReceiver', 'ReminderBridge', 'SpeechBridge', 'BunkerAlarmScheduler', 'BunkerAlarmReceiver', 'BunkerAlarmBridge'].map((f) => path.join(pkgDir, f + '.java'));
+  const holder = path.join(pkgDir, 'MainActivity.java');
+  if (!cap) fs.writeFileSync(holder, 'package marine.chengpro.app; public class MainActivity extends android.app.Activity {}');
+  const out = path.join(tmp, 'out');
+  fs.mkdirSync(out);
+  let ok = true;
+  try {
+    execFileSync('javac', ['-d', out, '-cp', [jar, cap].filter(Boolean).join(path.delimiter), ...reminderFiles, holder, ...(cap ? [path.join(stub, 'AppCompatActivity.java')] : [])], { stdio: 'pipe' });
+  } catch (e) { ok = false; console.log(String(e.stderr || e.message).slice(0, 800)); }
+  check('compiles against the Android platform classes', ok);
+} else {
+  console.log('  skip compile (set ANDROID_JAR to an android-all jar to compile the Java)');
+}
+
+fs.rmSync(tmp, { recursive: true, force: true });
+console.log(fails ? `\nFAILED — ${fails} of ${checks} checks` : `\nPASSED — ${checks} checks`);
+process.exit(fails ? 1 : 0);

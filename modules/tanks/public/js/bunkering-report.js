@@ -1,0 +1,3688 @@
+/**
+ * Bunkering screens — plan & live monitoring, after-bunkering tank condition,
+ * and the bunkering report summary.
+ *
+ * The three are one chain and each reads the stage before it:
+ *   Fuel Report -> Bunker Plan -> After Bunkering -> Bunker Summary
+ *
+ * All numbers come from BunkeringCore (public/js/bunkering-core.js), the same
+ * module the server computes with. Layout helpers, the tank grid and the print
+ * document are borrowed from FuelReport so both sheets look the same.
+ */
+const BunkerReports = (() => {
+  const Core = window.BunkeringCore;
+  const FRCore = window.FuelReportCore;
+  const UI = window.FuelReport;
+
+  const { esc, n, pct, signed, nowStamp } = UI;
+
+  const view = {
+    page: null,
+    /* One delivery can have two fuel lines (residual, and a distillate line through the barge's second hose).
+       view.full is the whole plan, view.line the line on screen ('A' residual, 'B' distillate), and view.plan that
+       line's form: every edit on the page lands on it, and fullPlan() puts it back into the whole plan. */
+    full: null,
+    line: 'A',
+    otherComputed: null,
+    plan: null,
+    after: null,
+    summary: null,
+    computed: null,
+    conversion: null,
+  };
+
+  function bundle() {
+    if (window.FuelReport && typeof FuelReport.overlayAioIdentity === 'function') {
+      return FuelReport.overlayAioIdentity(STATE.bundle);
+    }
+    return STATE.bundle;
+  }
+
+  /* The bundle the app holds. bundle() is a COPY inside Cheng AIO (the ship's identity laid over it), so
+     anything written onto it is gone at the next render, which reads the held bundle: the sheet then went
+     back to the previous reading until the program was closed and reopened. Writes go here. */
+  function heldBundle() { return STATE.bundle; }
+
+  /** The whole plan with the line on screen put back in. Pass stamp to mark it as saved now. */
+  function fullPlan(stamp) {
+    const base = view.full || Core.normalizePlan(bundle(), null, view.conversion);
+    const line = view.line === 'B' && base.distillate ? 'B' : 'A';
+    const out = Core.withLine(base, line, view.plan || (line === 'B' ? Core.distillateLine(base) : Core.residualLine(base)));
+    if (stamp) {
+      const at = new Date().toISOString();
+      out.updatedAt = at;
+      if (out.distillate && line === 'B') out.distillate = { ...out.distillate, updatedAt: at };
+      if (view.plan) view.plan.updatedAt = at;
+    }
+    view.full = out;
+    return out;
+  }
+
+  const LINE_NAMES = { A: 'Residual', B: 'Distillate' };
+
+  function tankById(tankId) {
+    for (const list of Object.values(bundle().tanks || {})) {
+      const t = (list || []).find((x) => x.id === tankId);
+      if (t) return t;
+    }
+    return null;
+  }
+
+  async function loadConversion() {
+    if (view.conversion) return view.conversion;
+    if (STATE.conversionTable) {
+      view.conversion = STATE.conversionTable;
+      return view.conversion;
+    }
+    try {
+      view.conversion = await Api.request('/api/reference/conversion');
+      await OfflineDB.idbSet('conversion', view.conversion);
+    } catch {
+      view.conversion = (await OfflineDB.idbGet('conversion'))
+        || { apiToDensity15: [], rdToDensity15: [] };
+    }
+    STATE.conversionTable = view.conversion;
+    return view.conversion;
+  }
+
+  function bunkerHistory() {
+    return { plans: [], after: [], summaries: [], ...(bundle().bunkerHistory || {}) };
+  }
+
+  function historyKeyForPath(path) {
+    if (path === 'bunker-plan') return 'plans';
+    if (path === 'bunker-after') return 'after';
+    if (path === 'bunker-summary') return 'summaries';
+    return null;
+  }
+
+  /** The filed row, built here so it is in the database before the print dialog
+   *  closes and before Push to peer runs. The server keeps this same id. */
+  /* What the engineer called the plan being saved right now (see askPlanName). */
+  let pendingPlanName = null;
+
+  function localSnapshot(path, form) {
+    const b = bundle();
+    if (path === 'bunker-plan') {
+      const snap = Core.planSnapshots(Core.computeBunkerPlans(b, form, view.conversion));
+      if (pendingPlanName != null) snap.name = pendingPlanName;
+      return snap;
+    }
+    if (path === 'bunker-after') return Core.afterSnapshot(Core.computeAfterBunkering(b, form, view.conversion));
+    if (path === 'bunker-summary') return Core.summarySnapshot(Core.computeBunkerSummary(b, form, null, view.conversion));
+    return null;
+  }
+
+  /** Save a form part, keeping the offline cache and queue in step. */
+  /** Ask what to call a bunkering plan being filed. null = cancelled. */
+  async function askPlanName() {
+    if (typeof askText !== 'function') return '';
+    return askText({
+      title: 'Save bunkering plan',
+      message: 'Give this plan a name or short description so it is easy to find later in Saved plans.',
+      label: 'Name / description',
+      placeholder: 'e.g. Fujairah VLSFO stem, 2 barges',
+      value: (view.plan && view.plan.saveName) || '',
+      okLabel: 'Save'
+    });
+  }
+
+  /* ---------- drafts: every edit on Plan / After / Summary is kept as the current draft ----------
+     The page reads the draft back when it is opened again, the program is reopened, or the device restarts. A copy is
+     also written straight to local storage on every edit, so a window closed before the 0.7 s save still finds it. */
+  const DRAFT_DELAY_MS = 700;
+  const draftTimers = {};
+  const DRAFTS = {
+    'bunker-plan': {
+      part: 'bunkerPlan', live: () => !!(document.getElementById('bp-save') && view.plan), form: () => fullPlan(true),
+    },
+    'bunker-after': {
+      part: 'bunkerAfter', live: () => !!(document.getElementById('ba-save') && view.after),
+      form: () => ({ ...view.after, updatedAt: new Date().toISOString() }),
+    },
+    'bunker-summary': {
+      part: 'bunkerSummary', live: () => !!(document.getElementById('bs-save') && view.summary),
+      form: () => ({ ...view.summary, updatedAt: new Date().toISOString() }),
+    },
+  };
+  const draftMirrorKey = (path) => 'tankDraft:' + STATE.activeVesselId + ':' + path;
+
+  function discardDraft(path) {
+    clearTimeout(draftTimers[path]); delete draftTimers[path];
+    try { localStorage.removeItem(draftMirrorKey(path)); } catch (_) { /* no storage */ }
+  }
+
+  function scheduleDraft(path) {
+    const d = DRAFTS[path];
+    if (!d || !d.live()) return;
+    try {
+      const form = d.form();
+      /* a photographed BDN is large: it goes with the saved draft, not the quick copy */
+      const light = path === 'bunker-summary' ? { ...form, bdnPhoto: null } : form;
+      localStorage.setItem(draftMirrorKey(path), JSON.stringify({ ts: Date.now(), form: light }));
+    } catch (_) { /* storage full or blocked: the timed save below still runs */ }
+    clearTimeout(draftTimers[path]);
+    draftTimers[path] = setTimeout(() => flushDraft(path), DRAFT_DELAY_MS);
+  }
+
+  async function flushDraft(path) {
+    const d = DRAFTS[path];
+    if (!d || !draftTimers[path]) return;
+    clearTimeout(draftTimers[path]); delete draftTimers[path];
+    if (!d.live()) return;
+    try { await saveChainPart(path, d.part, d.form(), { snapshot: false, quiet: true, draft: true }); }
+    catch (err) { console.warn('draft', path, err); }
+  }
+
+  function flushDrafts() { return Promise.all(Object.keys(DRAFTS).map((p) => flushDraft(p))); }
+
+  /** Edits that never reached the saved copy — the program closed, or the page was left in a hurry — come back. */
+  function recoverDraft(path, current) {
+    try {
+      const m = JSON.parse(localStorage.getItem(draftMirrorKey(path)) || 'null');
+      if (!m || !m.form) return null;
+      const saved = Date.parse(current && current.updatedAt) || 0;
+      if (m.ts <= saved) { discardDraft(path); return null; }
+      if (path === 'bunker-summary' && !m.form.bdnPhoto && current && current.bdnPhoto) m.form.bdnPhoto = current.bdnPhoto;
+      return m.form;
+    } catch (_) { return null; }
+  }
+
+  /** Hook an editable page: any edit made on it is kept as the current draft. */
+  function hookDraft(wrap, path) {
+    const edited = (e) => {
+      const t = e.target;
+      if (!t || !t.matches || !t.matches('input, select, textarea') || t.closest('[data-hist-search]')) return;
+      setTimeout(() => scheduleDraft(path), 0);   // after the page's own handlers have taken this edit
+    };
+    wrap.addEventListener('input', edited);
+    wrap.addEventListener('change', edited);
+  }
+
+  async function saveChainPart(path, part, form, { snapshot = false, extra = {}, deferServer = false, quiet = false, draft = false } = {}) {
+    const b = heldBundle();
+    /* A draft is kept, but it is not yet the ship's current condition: the readings are only taken from a saved report. */
+    if (draft) extra = { ...extra, syncReadings: false };
+    else discardDraft(path);
+    let snapshotEntry = null;
+    let fileSnapshot = !!snapshot;
+    const historyKey = snapshot ? historyKeyForPath(path) : null;
+    if (historyKey) {
+      try { snapshotEntry = localSnapshot(path, form); } catch (err) { console.warn(err); }
+      if (snapshotEntry) {
+        const h = bunkerHistory();
+        const list = h[historyKey] || [];
+        const prev = list[0];
+        const stripStamp = (form) => {
+          if (!form || typeof form !== 'object') return form;
+          const copy = { ...form };
+          delete copy.updatedAt;
+          return copy;
+        };
+        let sameForm = false;
+        try {
+          sameForm = !!(prev && prev.form && snapshotEntry.form
+            && JSON.stringify(stripStamp(prev.form)) === JSON.stringify(stripStamp(snapshotEntry.form)));
+        } catch (_) { sameForm = false; }
+        if (sameForm) {
+          fileSnapshot = false;
+          if (historyKey === 'plans' && pendingPlanName != null && prev) prev.name = pendingPlanName;
+          snapshotEntry = null;
+        } else {
+          h[historyKey] = [snapshotEntry, ...list.filter((s) => s && s.id !== snapshotEntry.id)].slice(0, 50);
+          b.bunkerHistory = h;
+        }
+      }
+    }
+    const body = { form, snapshot: fileSnapshot, snapshotEntry, ...extra };
+    b[part] = form;
+    await OfflineDB.idbSet('vessel:' + STATE.activeVesselId, b);
+    if (snapshotEntry && typeof persistPart === 'function') {
+      try { await persistPart('bunkerHistory', b.bunkerHistory); } catch { /* the PUT below still files it */ }
+    }
+
+    const pushServer = async () => {
+      try {
+        const res = await Api.request(`/api/vessels/${STATE.activeVesselId}/${path}`, { method: 'PUT', body });
+        if (res.form) b[part] = res.form;
+        if (res.history) {
+          const h = bunkerHistory();
+          h[path === 'bunker-plan' ? 'plans' : path === 'bunker-after' ? 'after' : 'summaries'] = res.history;
+          b.bunkerHistory = h;
+        }
+        await OfflineDB.idbSet('vessel:' + STATE.activeVesselId, b);
+        if (!quiet) showToast(snapshot ? 'Saved' : 'Draft saved');
+        return res;
+      } catch {
+        await Api.mutate(`/api/vessels/${STATE.activeVesselId}/${path}`, { method: 'PUT', body });
+        if (!quiet) showToast('Saved offline — will sync when online');
+        return null;
+      }
+    };
+
+    /* Written to the database now, even when a print follows. It used to wait for the print dialog
+       to close, and a dialog that never reports back left the new report on this screen only: the
+       next load read the database and the OLD report came back. (deferServer is kept for callers
+       but no longer holds the write back.) */
+    return pushServer();
+  }
+
+  function sameSavedForm(a, b) {
+    const strip = (form) => {
+      if (!form || typeof form !== 'object') return form;
+      const copy = { ...form };
+      delete copy.updatedAt;
+      return copy;
+    };
+    try { return JSON.stringify(strip(a)) === JSON.stringify(strip(b)); }
+    catch (_) { return false; }
+  }
+
+  /* One listener serves every saved list on the page: rows carry their searchable
+     text, and a row that does not contain the query is hidden. */
+  if (!window.__histSearchBound) {
+    window.__histSearchBound = true;
+    document.addEventListener('input', (ev) => {
+      const box = ev.target && ev.target.closest && ev.target.closest('[data-hist-search]');
+      if (!box) return;
+      const q = box.value.trim().toLowerCase();
+      const table = box.parentElement.querySelector('table');
+      if (!table) return;
+      table.querySelectorAll('tbody tr[data-hist-text]').forEach((tr) => {
+        tr.hidden = !!q && !tr.dataset.histText.includes(q);
+      });
+    });
+  }
+
+  function historyRows(list, kind, draftEntry) {
+    const latest = (list || []).find((s) => s && !s.isDraft && s.id !== '__draft__');
+    const hideDraft = draftEntry && latest && latest.form && sameSavedForm(latest.form, draftEntry.form);
+    const draft = draftEntry && draftEntry.form && !hideDraft ? [{
+      ...draftEntry,
+      id: draftEntry.id || '__draft__',
+      isDraft: true,
+      savedAt: draftEntry.savedAt || draftEntry.form.updatedAt || '',
+    }] : [];
+    const merged = [...draft, ...(list || []).filter((s) => s && s.id !== '__draft__' && !s.isDraft)];
+    const withName = kind === 'plans';
+    const rows = merged.map((s) => `<tr data-hist-text="${esc([s.date, s.savedAt, s.name, s.voyageNo, s.port].join(' ').toLowerCase())}">
+      <td>${s.isDraft ? '<span class="chip on">Draft</span> ' : ''}${esc((s.savedAt || '').replace('T', ' ').slice(0, 16))}</td>
+      ${withName ? `<td class="hist-name">${esc(s.name || '')}</td>` : ''}
+      <td>${esc(s.voyageNo || '')}</td>
+      <td>${esc(s.port || '')}</td>
+      <td>${esc(kind === 'plans' ? `${n(s.receivedMT, 3, '—')} / ${n(s.bunkerQuantityMT, 2, '—')} MT`
+        : kind === 'summaries' ? `${n(s.receivedQuantityMT, 3, '—')} MT · BDN ${n(s.bdnQuantityMT, 2, '—')}`
+        : (s.grades || []).filter((g) => g.presentMT != null)
+            .map((g) => `${g.label} ${n(g.presentMT, 1)}`).join(' · ') || (s.isDraft ? 'Current draft — Load to edit' : ''))}</td>
+      <td class="btn-row">
+        <button class="btn small" data-print="${esc(s.id)}">Print</button>
+        <button class="btn small" data-load="${esc(s.id)}">Load</button>
+        ${s.isDraft ? '' : `<button class="btn small danger" data-del="${esc(s.id)}">Delete</button>`}
+      </td></tr>`).join('');
+    return `<input type="search" class="hist-search" data-hist-search placeholder="Search by date, name, voyage or port" aria-label="Search saved list" autocomplete="off">
+    <div class="scroll-x"><table class="data-table">
+      <thead><tr><th>Saved</th>${withName ? '<th>Name</th>' : ''}<th>Voyage</th><th>Port</th><th>Result</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="${withName ? 6 : 5}" class="empty-state">Nothing saved yet — use Save only to file this report, or Print &amp; Save to file it and print</td></tr>`}</tbody>
+    </table></div>`;
+  }
+
+  /**
+   * Rebuild a saved record from its own form and send it to the printer.
+   *
+   * Each entry keeps the form it was saved from, so it can be turned back into
+   * a sheet without loading it over whatever is on screen — reprinting last
+   * month's summary should not cost you the plan you are in the middle of.
+   */
+  const REPRINTERS = {
+    plans: (entry) => {
+      const plans = Core.computeBunkerPlans(bundle(), entry.form, view.conversion);
+      return { computed: plans.a, fresh: Core.planSnapshots(plans), pages: planPrintPages(plans) };
+    },
+    after: (entry) => {
+      const c = Core.computeAfterBunkering(bundle(), entry.form, view.conversion);
+      return { computed: c, fresh: Core.afterSnapshot(c), pages: afterPrintPages(c) };
+    },
+    summaries: (entry) => {
+      const c = Core.computeBunkerSummary(bundle(), entry.form, null, view.conversion);
+      return { computed: c, fresh: Core.summarySnapshot(c), pages: summaryPrintPages(c) };
+    },
+  };
+
+  function bindHistory(wrap, kind, onLoad, draftForm) {
+    wrap.querySelectorAll('[data-print]').forEach((btn) => {
+      btn.onclick = () => {
+        let entry = (bunkerHistory()[kind] || []).find((s) => s.id === btn.dataset.print);
+        if (!entry && btn.dataset.print === '__draft__' && draftForm) {
+          entry = { form: draftForm, id: '__draft__' };
+        }
+        if (!entry || !entry.form) { showToast('That saved record has no sheet to print'); return; }
+        const build = REPRINTERS[kind];
+        if (!build) return;
+        try {
+          const { fresh, pages } = build(entry);
+          if (!entry.isDraft && entry.id !== '__draft__') UI.warnIfDrifted(UI.snapshotDrift(entry, fresh));
+          UI.printHtml(pages);
+        } catch (err) {
+          console.warn(err);
+          showToast('Could not rebuild that saved record for printing');
+        }
+      };
+    });
+    wrap.querySelectorAll('[data-load]').forEach((btn) => {
+      btn.onclick = () => {
+        let entry = (bunkerHistory()[kind] || []).find((s) => s.id === btn.dataset.load);
+        if (!entry && btn.dataset.load === '__draft__' && draftForm) {
+          entry = { form: draftForm, id: '__draft__' };
+        }
+        if (entry) onLoad(entry);
+      };
+    });
+    wrap.querySelectorAll('[data-del]').forEach((btn) => {
+      btn.onclick = async () => {
+        if (!confirm('Delete this saved report?')) return;
+        try {
+          const res = await Api.request(
+            `/api/vessels/${STATE.activeVesselId}/bunker-history/${kind}/${encodeURIComponent(btn.dataset.del)}`,
+            { method: 'DELETE' },
+          );
+          if (res.history) heldBundle().bunkerHistory = res.history;
+          showToast('Deleted');
+          navigate(kind === 'plans' ? 'bunker-plan' : kind === 'after' ? 'bunker-after' : 'bunker-summary');
+        } catch (err) {
+          showToast(err.message || 'Could not delete');
+        }
+      };
+    });
+  }
+
+  /* ================================================================ plan ==== */
+
+  const PLAN_COLUMNS = [
+    { field: 'capacity100M3', label: 'CAPACITY 100% M3', d: 1 },
+    { field: 'capacity85M3', label: 'CAPACITY 85% M3', d: 2 },
+    { field: 'startingUllageMM', label: 'STARTING ULL. (CM)', d: 1 },
+    { field: 'startingRobM3', label: 'STARTING ROB (M3)', d: 3 },
+    { field: 'freeM3At85', label: 'FREE (M3) @85% CAP', d: 3 },
+    { field: 'targetVolumePercent', label: 'TARGET VOL. %', d: 'pct' },
+    { field: 'targetUllageMM', label: 'TARGET ULLAGE (CM)', d: 1 },
+    { field: 'planAddMT', label: 'PLAN ADD (MT)', d: 3 },
+    { field: 'currentVolumePercent', label: 'CURRENT VOL.(%)', d: 'pct' },
+    { field: 'currentVolumeM3', label: 'CURRENT VOL.(M3)', d: 3 },
+    { field: 'quantityAddMT', label: 'QUANTITY ADD (MT)', d: 3 },
+    { field: 'remainingToTargetMT', label: 'TO GO (MT)', d: 3 },
+  ];
+
+  function planCell(field, value) {
+    const col = PLAN_COLUMNS.find((c) => c.field === field);
+    if (!col) return n(value, 2);
+    if (field === 'startingUllageMM' || field === 'targetUllageMM') {
+      return n(FRCore.mmToCm(value), 1);
+    }
+    return col.d === 'pct' ? pct(value) : n(value, col.d);
+  }
+
+  let clockTimer = null;
+  let tickTimer = null;
+  let countdownEndsAt = null;
+  let persistClockTimer = null;
+
+  function stopClockTicker() {
+    if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
+    if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+  }
+
+  /**
+   * "Prepare to close the valve": light the tank, the screen edge, and speak,
+   * five minutes before a tank reaches its target or the 85% limit. The
+   * decision lives in BunkerAlert; this only hands it the plan's own rows.
+   */
+  function updateBunkerAlerts() {
+    if (typeof BunkerAlert === 'undefined' || !view.planComputed) return;
+    /* The other line's rows are numbered apart (+100) so an alert from it never lights a row of the line on screen. */
+    const rows = view.planComputed.rows.concat(view.otherComputed
+      ? view.otherComputed.rows.map((r) => ({ ...r, slot: (r.slot || 0) + 100 })) : []);
+    try { BunkerAlert.update(rows, { now: Date.now() }); } catch (_) { /* never let the alarm break the sheet */ }
+  }
+
+  /**
+   * Keep watching after the operator leaves the sheet. Opening another Tank
+   * page while fuel is still going aboard must not turn the alarm off — the
+   * clock behind it does not stop, so neither does the watch. It reads the
+   * plan as filed in the ship's own record rather than the page's copy, so a
+   * ship change cannot leave one vessel's tanks being judged against
+   * another's.
+   */
+  let alertMonitor = null;
+  function stopBackgroundMonitor() {
+    if (alertMonitor) { clearInterval(alertMonitor); alertMonitor = null; }
+  }
+  function startBackgroundMonitor() {
+    if (alertMonitor || typeof BunkerAlert === 'undefined') return;
+    const tick = async () => {
+      /* The sheet is back on screen: its own ticker takes over. */
+      if (view.page === 'bunker-plan' && document.getElementById('bp-clock-toggle')) {
+        stopBackgroundMonitor();
+        return;
+      }
+      try {
+        const b = bundle();
+        if (!b) { BunkerAlert.clear(); stopBackgroundMonitor(); return; }
+        await loadConversion();
+        const plan = Core.normalizePlan(b, b.bunkerPlan, view.conversion);
+        if (!planClockLive(plan)) { BunkerAlert.clear(); stopBackgroundMonitor(); return; }
+        /* Both lines are watched: the distillate line can be pumping while the residual one is done. */
+        let rows = Core.computeBunkerPlan(b, Core.residualLine(plan), view.conversion).rows;
+        const dl = Core.distillateLine(plan);
+        if (dl) rows = rows.concat(Core.computeBunkerPlan(b, dl, view.conversion).rows.map((r) => ({ ...r, slot: (r.slot || 0) + 100 })));
+        BunkerAlert.update(rows, { now: Date.now() });
+      } catch (_) { /* try again on the next beat */ }
+    };
+    alertMonitor = setInterval(tick, 5000);
+    tick();
+  }
+
+  /** True while the overall pump or any tank valve clock of one line is live. */
+  function lineLive(p) {
+    if (!p) return false;
+    const clock = Core.pumpingClock(p, 0, null);
+    if (clock.running || clock.paused) return true;
+    const seq = Array.isArray(p.sequence) ? p.sequence : [];
+    return seq.some((slot) => {
+      if (!slot || !slot.tankId) return false;
+      const tc = Core.tankClock(slot);
+      return tc.running || tc.paused;
+    });
+  }
+
+  /* ---- A bunkering watched from two devices ----
+   * The engine merges the other device's plan into this device's database every few seconds while one is running.
+   * This page looks at the database while it is open and takes in any piece (a tank, the header, the pump state)
+   * that has a newer stamp than the one on screen. Content it already shows is only re-stamped; the page is drawn
+   * again only when something really changed, and not while someone is typing in it. */
+  const PLAN_TOP = ['status', 'distributionMode', 'soundingEntry', 'startedAt', 'pausedAt', 'elapsedPausedMs', 'completedAt'];
+  let remoteWatch = null;
+  let remoteDrawPending = false;
+  function stopRemoteWatch() { if (remoteWatch) { clearInterval(remoteWatch); remoteWatch = null; } remoteDrawPending = false; }
+
+  function adoptNewerPlan(local, remote) {
+    const J = (x) => JSON.stringify(x == null ? null : x);
+    const core = (slot) => { const { at, ...rest } = slot || {}; return J(rest); };
+    let changed = false;
+    (remote.sequence || []).forEach((rs, i) => {
+      const ls = local.sequence[i];
+      if (!ls) { local.sequence[i] = rs; changed = true; return; }
+      if (String(rs.at || '') > String(ls.at || '')) {
+        if (core(rs) !== core(ls)) changed = true;
+        local.sequence[i] = rs;
+      }
+    });
+    if (String(remote.headerAt || '') > String(local.headerAt || '')) {
+      if (J(remote.header) !== J(local.header)) changed = true;
+      local.header = { ...remote.header };
+      local.headerAt = remote.headerAt;
+    }
+    if (String(remote.topAt || '') > String(local.topAt || '')) {
+      if (PLAN_TOP.some((k) => J(remote[k]) !== J(local[k]))) changed = true;
+      PLAN_TOP.forEach((k) => { local[k] = remote[k] !== undefined ? remote[k] : null; });
+      local.topAt = remote.topAt;
+    }
+    if (String(remote.updatedAt || '') > String(local.updatedAt || '')) local.updatedAt = remote.updatedAt;
+    return changed;
+  }
+
+  function typingInPlan() {
+    const ae = document.activeElement;
+    return !!(ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && ae.closest && ae.closest('.fuel-report-page'));
+  }
+
+  function startRemoteWatch() {
+    stopRemoteWatch();
+    remoteWatch = setInterval(async () => {
+      if (view.page !== 'bunker-plan' || !document.getElementById('bp-save') || !STATE.activeVesselId || !view.plan) { stopRemoteWatch(); return; }
+      try {
+        const res = await Api.request(`/api/vessels/${STATE.activeVesselId}/bunker-plan`);
+        const remote = res && res.form;
+        if (remote && Array.isArray(remote.sequence) && Array.isArray(view.plan.sequence)) {
+          /* Both lines are taken in piece by piece: the residual line is the document itself, the distillate line
+             a document inside it with the same stamps. */
+          const full = fullPlan();
+          let changed = adoptNewerPlan(full, remote);
+          if (remote.distillate) {
+            if (full.distillate) { if (adoptNewerPlan(full.distillate, remote.distillate)) changed = true; }
+            else { full.distillate = remote.distillate; changed = true; }
+          }
+          if (changed) { view.full = full; remoteDrawPending = true; }
+        }
+        if (!remoteDrawPending || typingInPlan()) return;
+        remoteDrawPending = false;
+        const b = heldBundle();
+        b.bunkerPlan = view.full;
+        view.pendingPlan = view.full;
+        const stamp = new Date().toLocaleTimeString();
+        await navigate('bunker-plan');
+        const head = document.querySelector('.page-head');
+        if (head && !document.getElementById('bp-remote-note')) {
+          const note = document.createElement('div');
+          note.id = 'bp-remote-note';
+          note.className = 'hint no-print';
+          head.insertAdjacentElement('afterend', note);
+        }
+        const note = document.getElementById('bp-remote-note');
+        if (note) note.textContent = `Updated from the other device at ${stamp}.`;
+      } catch (_) { /* the next beat tries again */ }
+    }, 2500);
+  }
+
+  /** True while either line of the plan has a pump or valve clock live. */
+  function planClockLive(plan) {
+    const full = plan || (view.plan ? fullPlan() : null);
+    if (!full) return false;
+    return lineLive(Core.residualLine(full)) || lineLive(Core.distillateLine(full));
+  }
+
+  /**
+   * Keep the pumping clock on disk so remounts / sync / leaving the page do not
+   * wipe a transfer that is still underway. Elapsed time is wall-clock based, so
+   * a restart after remount continues from the same startedAt.
+   */
+  function persistPlanClock({ deferServer = true } = {}) {
+    if (!view.plan || !STATE.activeVesselId) return;
+    const form = fullPlan(true);
+    const b = heldBundle();
+    b.bunkerPlan = form;
+    OfflineDB.idbSet('vessel:' + STATE.activeVesselId, b).catch(() => {});
+    if (persistClockTimer) clearTimeout(persistClockTimer);
+    const push = () => {
+      persistClockTimer = null;
+      saveChainPart('bunker-plan', 'bunkerPlan', form, { snapshot: false, quiet: true }).catch(() => {});
+    };
+    if (deferServer) persistClockTimer = setTimeout(push, 400);
+    else push();
+  }
+
+  /* Inside ChEng AIO the shell already has a Dashboard button at the top right,
+     so a MAIN MENU button on these sheets is a second, worse way out: it drops
+     into Tank Chief's own dashboard. Standalone Tank Chief has no such button
+     and keeps it. */
+  function mainMenuButton(id) {
+    const inAio = typeof isAioEmbedded === 'function' && isAioEmbedded();
+    return inAio ? '' : `<button class="btn" id="${id}">MAIN MENU</button>`;
+  }
+
+  /**
+   * Ask the ChEng AIO shell to change page. Inside the bunker-ops iframe there is
+   * no Tank sidebar, so MAIN MENU must leave the embed rather than open Tank's
+   * dashboard (which traps the operator with no return path).
+   */
+  function requestAioNavigate(moduleId) {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'chengpro-navigate', module: moduleId }, '*');
+        return true;
+      }
+    } catch (_) { /* ignore */ }
+    return false;
+  }
+
+  /**
+   * Two cadences, because they cost different amounts.
+   *
+   * The clock itself is retimed every second — while fuel is going aboard the
+   * pumping time has to be seen running, and it is only a few text nodes. The
+   * quantities, rates and ETAs come from a full recompute over every tank, so
+   * those keep the slower beat; they move on the scale of minutes anyway.
+   */
+  function startClockTicker() {
+    stopClockTicker();
+    const alive = () => view.page === 'bunker-plan' && document.getElementById('bp-clock-toggle');
+
+    tickTimer = setInterval(() => {
+      if (!alive()) { stopClockTicker(); startBackgroundMonitor(); return; }
+      if (!tickClockOnly()) stopClockTicker();
+    }, 1000);
+
+    clockTimer = setInterval(() => {
+      if (!alive()) { stopClockTicker(); startBackgroundMonitor(); return; }
+      const c = Core.computeBunkerPlan(bundle(), view.plan, view.conversion);
+      const otherLive = view.full && view.full.distillate && lineLive(view.line === 'A' ? Core.distillateLine(fullPlan()) : Core.residualLine(fullPlan()));
+      if (!c.monitoring.clock.running && !c.monitoring.tanksFilling && !otherLive) return;
+      refreshPlan();
+    }, 15000);
+  }
+
+  /**
+   * Retime whatever is running, without recomputing the plan behind it.
+   *
+   * Only running clocks are touched. A paused or closed tank keeps the figure
+   * it stopped on — that is the record of how long it took, and overwriting it
+   * with a live count would be a lie about a valve that is shut.
+   *
+   * Returns whether anything is still running, so the ticker can retire itself
+   * rather than burn a timer over a finished operation.
+   */
+  function tickClockOnly() {
+    /* The projections carry absolute times, so the minutes left keep counting
+       down between the slower full recomputes. */
+    updateBunkerAlerts();
+    let anyRunning = false;
+    if (view.full && view.full.distillate) {
+      /* The line not on screen may be the one that is running. */
+      const full = fullPlan();
+      const other = view.line === 'A' ? Core.distillateLine(full) : Core.residualLine(full);
+      if (other && lineLive(other)) anyRunning = true;
+    }
+    const clock = Core.pumpingClock(view.plan, 0, null);
+    if (clock.running) {
+      anyRunning = true;
+      UI.setCell('[data-bp-mon="elapsedLabel"]', clock.elapsedLabelLive || clock.elapsedLabel);
+      // The countdown counts down. It is rebuilt from the quantity still to come
+      // on the slower beat; between those it just runs off the wall clock, so it
+      // moves every second instead of jumping every fifteen.
+      const el = document.querySelector('[data-bp-est-mon="countdown"]');
+      if (el && countdownEndsAt) {
+        const leftH = (countdownEndsAt - Date.now()) / 3600000;
+        el.textContent = leftH > 0 ? Core.hmsLabel(leftH) : '0h 00m 00s';
+      }
+    }
+    const seq = Array.isArray(view.plan.sequence) ? view.plan.sequence : [];
+    seq.forEach((slot, i) => {
+      const tc = Core.tankClock(slot || {});
+      if (!tc.running) return;
+      anyRunning = true;
+      const el = document.querySelector(`[data-bp-tank-time="${i}"]`);
+      if (el) el.textContent = tc.elapsedLabelLive;
+    });
+    return anyRunning;
+  }
+
+  function recomputePlan() {
+    view.computed = Core.computeBunkerPlan(bundle(), view.plan, view.conversion);
+    /* view.computed is shared with the after-survey and summary pages, which
+       store results of a different shape. The alarm reads the plan's own. */
+    view.planComputed = view.computed;
+    return view.computed;
+  }
+
+  /** The saved-plans table, with the open draft on top when there is one. */
+  function planHistoryHtml() {
+    return historyRows(bunkerHistory().plans, 'plans', view.plan && view.plan.updatedAt ? {
+      form: fullPlan(),
+      voyageNo: view.plan.header && view.plan.header.voyageNo,
+      port: view.plan.header && view.plan.header.port,
+      savedAt: view.plan.updatedAt,
+    } : null);
+  }
+
+  function loadPlanEntry(entry) {
+    view.pendingPlan = entry.form;
+    navigate('bunker-plan');
+    showToast(entry.isDraft || entry.id === '__draft__' ? 'Draft loaded for editing' : 'Plan loaded');
+  }
+
+  /** Redraw the saved plans in place after a save, so the new entry shows at once
+   *  without leaving the sheet. */
+  function refreshPlanHistory() {
+    const host = document.getElementById('bp-history-host');
+    if (!host) return;
+    host.innerHTML = planHistoryHtml();
+    bindHistory(host, 'plans', loadPlanEntry, fullPlan());
+  }
+
+  async function renderPlan(main) {
+    view.page = 'bunker-plan';
+    stopBackgroundMonitor();
+    await loadConversion();
+    const b = bundle();
+    if (!view.pendingPlan) {
+      const back = recoverDraft('bunker-plan', b.bunkerPlan);
+      if (back) { view.pendingPlan = back; showToast('Your unsaved Bunkering Plan draft was restored'); }
+    }
+    const planFromPending = !!view.pendingPlan;
+    view.full = Core.normalizePlan(b, view.pendingPlan || b.bunkerPlan, view.conversion);
+    view.pendingPlan = null;
+    if (view.line === 'B' && !view.full.distillate) view.line = 'A';
+    view.plan = view.line === 'B' ? Core.distillateLine(view.full) : Core.residualLine(view.full);
+    view.otherComputed = null;
+    const c = recomputePlan();
+
+    main.innerHTML += `${UI.bunkerNavHtml('bunker-plan')}<div class="page-head no-print">
+      <div><h1>Bunkering Plan &amp; Monitoring</h1>
+        <div class="desc">Target ullage per tank from the fuel report ROB, then live intake as the transfer runs</div></div>
+      <div class="btn-row">
+        <button class="btn primary" id="bp-print-save">PRINT &amp; SAVE</button>
+        <button class="btn" id="bp-save">Save only</button>
+        <button class="btn" id="bp-print-only">Print only</button>
+        <button class="btn" id="bp-new">NEW PLAN</button>
+        ${mainMenuButton('bp-menu')}
+      </div></div>`;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'fuel-report-page';
+    wrap.innerHTML = `
+      ${planLinesPanel()}
+      ${planHeaderPanel(c)}
+      ${planSequencePanel(c)}
+      ${planEstimatesPanel()}
+      ${planChangeSummaryPanel()}
+      ${planFinishPanel(c)}
+      ${planBlendPanel()}
+      ${planTankTablesPanel(c)}
+      <div class="form-panel no-print">
+        <details class="saved-reports-fold">
+          <summary class="section-title" style="margin-top:0; cursor:pointer;">Saved plans</summary>
+          <p class="hint" style="margin-top:8px;">Drafts stay editable. Filed reports can be reprinted or loaded.</p>
+          <div id="bp-history-host">${planHistoryHtml()}</div>
+        </details>
+      </div>`;
+    main.appendChild(wrap);
+
+    bindPlanEvents(wrap);
+    UI.bindBunkerNav(main);
+    hookDraft(wrap, 'bunker-plan');
+    refreshPlan();
+    if (planFromPending) scheduleDraft('bunker-plan');
+    if (c.monitoring.clock.running || c.monitoring.tanksFilling) startClockTicker();
+    startRemoteWatch();
+    if (window.TankCardCapture) TankCardCapture.addButton('.page-head .btn-row', 'bp-capture', 'monitoring', bundle);
+  }
+
+  /** The whole delivery's plan worked out for printing and saving. */
+  function printPlans() {
+    return Core.computeBunkerPlans(bundle(), fullPlan(), view.conversion);
+  }
+
+  function lineStatus(c) {
+    const m = c.monitoring;
+    if (m.clock.completed) return 'Complete';
+    if (m.clock.paused) return 'Paused';
+    if (m.clock.running) return 'Pumping';
+    return 'Planning';
+  }
+
+  function lineCardHtml(which, c) {
+    const grade = (FRCore.FUEL_TYPES.find((f) => f.id === c.header.fuelType) || {}).label || '';
+    const m = c.monitoring;
+    const st = lineStatus(c);
+    return `<div class="bp-line-card${view.line === which ? ' on' : ''}" data-bp-line="${which}" role="button" tabindex="0">
+      <div class="bp-line-card-h"><b>${LINE_NAMES[which]}</b> <span>${esc(grade)}</span> <i class="bp-line-state" data-state="${esc(st.toLowerCase())}">${esc(st)}</i></div>
+      <div class="bp-line-card-b">
+        <div><small>Received</small><b>${n(m.receivedMT, 1, '0.0')}</b> <small>of ${n(c.header.bunkerQuantityMT, 1, '—')} MT</small></div>
+        <div><small>Rate</small><b>${n(c.header.deliveryRateMTPerHour, 1, '—')}</b> <small>MT/h</small></div>
+        <div><small>Left</small><b>${esc(m.timeRemainingLabel || '—')}</b></div>
+      </div></div>`;
+  }
+
+  function planLinesPanel() {
+    const two = Boolean(view.full && view.full.distillate);
+    if (!two) {
+      return `<div class="form-panel no-print bp-lines" id="bp-lines">
+        <div class="bp-lines-head"><div><b>Delivery lines</b>
+          <span class="hint" style="margin:0 0 0 8px">One barge, one hose. Add a distillate line to bunker MGO through the second hose at the same time, at its own rate.</span></div>
+          <button type="button" class="btn small" id="bp-add-distillate">+ Add distillate line</button></div></div>`;
+    }
+    return `<div class="form-panel no-print bp-lines" id="bp-lines">
+      <div class="bp-lines-head"><div class="bp-line-tabs" role="tablist">
+        <button type="button" class="btn bp-tab${view.line === 'A' ? ' on primary' : ''}" role="tab" aria-selected="${view.line === 'A'}" data-bp-line="A">Residual line</button>
+        <button type="button" class="btn bp-tab${view.line === 'B' ? ' on primary' : ''}" role="tab" aria-selected="${view.line === 'B'}" data-bp-line="B">Distillate line</button>
+      </div><button type="button" class="btn small danger" id="bp-remove-distillate">Remove distillate line</button></div>
+      <div class="bp-lines-strip" id="bp-lines-strip"></div>
+      <div class="bp-lines-warn" id="bp-lines-warn" role="status"></div>
+    </div>`;
+  }
+
+  /** The two lines side by side, and the whole delivery: repainted whenever the plan is. */
+  function refreshLinesStrip(cActive) {
+    const host = document.getElementById('bp-lines-strip');
+    if (!host || !view.full || !view.full.distillate) return;
+    const full = fullPlan();
+    const other = view.line === 'A' ? Core.distillateLine(full) : Core.residualLine(full);
+    const cOther = Core.computeBunkerPlan(bundle(), other, view.conversion);
+    view.otherComputed = cOther;
+    const cA = view.line === 'A' ? cActive : cOther;
+    const cB = view.line === 'A' ? cOther : cActive;
+    const comb = Core.combineLines(bundle(), full, cA, cB);
+    host.innerHTML = `${lineCardHtml('A', cA)}${lineCardHtml('B', cB)}
+      <div class="bp-line-card bp-line-total">
+        <div class="bp-line-card-h"><b>Whole delivery</b></div>
+        <div class="bp-line-card-b">
+          <div><small>Received</small><b>${n(comb.receivedMT, 1, '0.0')}</b> <small>of ${n(comb.quantityMT, 1, '—')} MT</small></div>
+          <div><small>Together</small><b>${n(comb.rateMTPerHour, 1, '—')}</b> <small>MT/h</small></div>
+          <div><small>Finish in</small><b>${esc(comb.timeRemainingLabel && comb.timeRemainingLabel !== '—' ? comb.timeRemainingLabel : (comb.timeToBunkerLabel || '—'))}</b></div>
+        </div></div>`;
+    const warn = document.getElementById('bp-lines-warn');
+    if (warn) {
+      warn.innerHTML = comb.warnings.map((w) => `<div class="bp-lines-w ${w.level}">${esc(w.text)}</div>`).join('');
+    }
+  }
+
+  function switchLine(line) {
+    if (line === view.line || !view.full) return;
+    if (line === 'B' && !view.full.distillate) return;
+    view.pendingPlan = fullPlan();
+    view.line = line;
+    navigate('bunker-plan');
+  }
+
+  function planHeaderPanel(c) {
+    const h = view.plan.header;
+    const twoLines = Boolean(view.full && view.full.distillate);
+    const onB = view.line === 'B';
+    /* With two lines each has its own family of grade; with one line any grade will do. */
+    const fuelTypes = onB ? FRCore.FUEL_TYPES.filter((f) => Core.DISTILLATE_FUEL_TYPES.includes(f.id))
+      : (twoLines ? FRCore.FUEL_TYPES.filter((f) => Core.RESIDUAL_FUEL_TYPES.includes(f.id)) : FRCore.FUEL_TYPES);
+    /* The distillate line shares the ship's particulars with the residual line, so they are shown but not edited here. */
+    const lock = onB ? ' disabled title="Taken from the residual line"' : '';
+    const fuelOpts = fuelTypes.map((f) =>
+      `<option value="${f.id}" ${h.fuelType === f.id ? 'selected' : ''}>${esc(f.label)}</option>`).join('');
+    const heelVal = h.heel === '' || h.heel == null ? 0 : h.heel;
+    const grades = Core.COMMON_FUEL_GRADES.map((g) => `<option value="${esc(g)}"></option>`).join('');
+
+    return `<div class="form-panel fr-header no-print">
+      ${twoLines ? `<div class="bp-line-badge" data-line="${onB ? 'B' : 'A'}">${onB ? 'Distillate line — second hose · date, port, drafts and heel come from the residual line' : 'Residual line — first hose'}</div>` : ''}
+      <div class="fr-header-grid">
+        <label class="fr-field"><span>DATE</span>
+          <input type="date" data-head="date"${lock} value="${esc(h.date)}"></label>
+        <label class="fr-field"><span>VOYAGE</span>
+          <input data-head="voyageNo"${lock} value="${esc(h.voyageNo)}"></label>
+        <label class="fr-field"><span>DRAFT FWD</span>
+          <input type="number" step="any" data-head="draftFwd"${lock} value="${esc(h.draftFwd)}"></label>
+        <label class="fr-field"><span>MEAN DRAFT</span>
+          <output class="fr-out" data-bp-head="meanDraft"></output></label>
+        <label class="fr-field"><span>HEEL (°)</span>
+          <input type="number" step="any" data-head="heel"${lock} data-signed="1" value="${esc(heelVal)}" title="Negative = port · positive = starboard"></label>
+        <label class="fr-field"><span>FUEL</span>
+          <select data-head="fuelType">${fuelOpts}</select></label>
+
+        <label class="fr-field fr-field-wide"><span>PORT</span>
+          <input data-head="port"${lock} value="${esc(h.port)}"></label>
+        <label class="fr-field"><span>DRAFT AFT</span>
+          <input type="number" step="any" data-head="draftAft"${lock} value="${esc(h.draftAft)}"></label>
+        <label class="fr-field"><span>TRIM</span>
+          <output class="fr-out" data-bp-head="trim"></output></label>
+        <label class="fr-field"><span>DRAFT FWD AFTER BUNKERING</span>
+          <input type="number" step="any" data-head="afterDraftFwd"${lock} value="${esc(h.afterDraftFwd)}" placeholder="expected"></label>
+        <label class="fr-field"><span>DRAFT AFT AFTER BUNKERING</span>
+          <input type="number" step="any" data-head="afterDraftAft"${lock} value="${esc(h.afterDraftAft)}" placeholder="expected"></label>
+        <label class="fr-field"><span>TRIM AFTER BUNKERING</span>
+          <output class="fr-out" data-bp-head="afterTrim"></output></label>
+        <label class="fr-field"><span>DELIVERY RATE (MT/H)</span>
+          <input type="number" step="any" data-head="deliveryRateMTPerHour" value="${esc(h.deliveryRateMTPerHour)}"></label>
+        <label class="fr-field"><span>BUNKER QUANTITY (MT)</span>
+          <input type="number" step="any" data-head="bunkerQuantityMT" value="${esc(h.bunkerQuantityMT)}"></label>
+
+        <label class="fr-field"><span>GRADE (BDN)</span>
+          <input list="bp-grades" data-head="fuelGrade" value="${esc(h.fuelGrade)}">
+          <datalist id="bp-grades">${grades}</datalist></label>
+        <label class="fr-field"><span>DENSITY @15</span>
+          <input type="number" step="any" data-head="density15" value="${esc(h.density15)}"
+            placeholder="${esc(c.header.density15 ?? '')}"
+            title="Bunker density at 15 °C — used to convert tank volume change to MT"></label>
+        <label class="fr-field"><span>TEMP (°C)</span>
+          <input type="number" step="any" data-head="tempC" value="${esc(h.tempC)}" placeholder="15"></label>
+        <label class="fr-field"><span>BDN QUANTITY (MT)</span>
+          <input type="number" step="any" data-head="bdnQuantityMT" value="${esc(h.bdnQuantityMT)}"
+            title="Quantity on the bunker delivery note — compared with tank-basis received"></label>
+        <label class="fr-field"><span>TIME TO BUNKER</span>
+          <output class="fr-out" data-bp-head="timeToBunker"></output></label>
+      </div>
+      <div class="hint">Heel: <b>negative</b> = port, <b>positive</b> = starboard (decimals OK). Default 0.</div>
+      <div class="hint" data-bp-head="advice"></div>
+    </div>`;
+  }
+
+  /** The heading of the current-sounding column, for how it is being typed. */
+  function soundLabel(mode) {
+    return mode === 'dip' ? 'DIP' : mode === 'ullage' ? 'ULLAGE' : 'SOUND';
+  }
+  function soundLabelPrint(mode) {
+    return mode === 'dip' ? 'dip' : mode === 'ullage' ? 'ullage' : 'sound';
+  }
+
+  function planSequencePanel(c) {
+    const tanks = (bundle().tanks.fuel || []);
+
+    /* Heavy fuel and distillate are bunkered as separate operations, so the
+       picker offers them as separate groups rather than one list of
+       eighteen. Within a group the tanks are in the chief's order, because
+       that is the order the sequence is planned in. */
+    const isDo = (t) => {
+      if (typeof FuelReportCore !== 'undefined' && typeof FuelReportCore.sectionForTank === 'function') {
+        return FuelReportCore.sectionForTank(t) === 'do';
+      }
+      const grade = String((t && t.fuelGrade) || '').toLowerCase();
+      return grade === 'mdo' || grade === 'mgo' || grade === 'lsmgo';
+    };
+    const heavy = tanks.filter((t) => !isDo(t));
+    const distillate = tanks.filter(isDo);
+
+    const rows = c.rows.map((row, i) => {
+      const f = view.plan.sequence[i] || {};
+      const optionFor = (t) =>
+        `<option value="${esc(t.id)}" ${row.tankId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`;
+      const group = (label, list) => (list.length
+        ? `<optgroup label="${esc(label)}">${list.map(optionFor).join('')}</optgroup>`
+        : '');
+      /* With two lines each offers only its own family of tank (a tank already chosen stays listed). */
+      const twoLines = Boolean(view.full && view.full.distillate);
+      const showHeavy = view.line !== 'B';
+      const showDo = view.line === 'B' || !twoLines;
+      const keep = (list, show) => (show ? list : list.filter((t) => t.id === row.tankId));
+      const opts = '<option value="">— select tank —</option>'
+        + group('HFO / VLSFO', keep(heavy, showHeavy))
+        + group('MDO / MGO / LSMGO', keep(distillate, showDo));
+      const cell = (field) => `<td class="fr-calc" data-bp-cell="${i}.${field}"></td>`;
+      /* An ullage the program works out, or — for a manual-interpolation tank — one the chief types. */
+      const ullageCell = (slotIdx, field, slot) => `<td class="fr-calc"><span data-bp-cell="${slotIdx}.${field}"></span>`
+        + `<input type="number" step="any" class="bp-ull-input" style="width:5.5em" hidden data-slot="${slotIdx}" data-field="${field}" data-bp-ull="${slotIdx}.${field}"`
+        + ` value="${esc(slot[field] === '' || slot[field] == null ? '' : FRCore.mmToCm(slot[field]))}" title="This tank is worked by manual interpolation, so type the ullage yourself (cm)."></td>`;
+      const tk = tanks.find((t) => t.id === row.tankId);
+      const directM3 = tk && FRCore.usesDirectM3Input && FRCore.usesDirectM3Input(tk);
+      const soundDisplay = directM3
+        ? (f.currentSoundingMM === '' || f.currentSoundingMM == null ? '' : String(f.currentSoundingMM))
+        : FRCore.formatCm(f.currentSoundingMM);
+      return `<tr data-slot="${i}">
+        <th class="fr-tank-name"><span class="bp-tank-pick"><span class="bp-seq">${i + 1}.</span><select data-slot="${i}" data-field="tankId">${opts}</select></span></th>
+        ${cell('capacity100M3')}${cell('capacity85M3')}${ullageCell(i, 'startingUllageMM', f)}
+        ${cell('startingRobM3')}${cell('freeM3At85')}
+        <td class="bp-entry"><input type="number" step="any" data-slot="${i}" data-field="targetVolumeM3" value="${esc(f.targetVolumeM3)}"></td>
+        ${cell('targetVolumePercent')}${ullageCell(i, 'targetUllageMM', f)}${cell('planAddMT')}
+        <td class="bp-valve" data-bp-valve="${i}"></td>
+        <td class="bp-entry bp-sound"><input type="number" step="any" data-slot="${i}" data-field="currentSoundingMM" value="${esc(soundDisplay)}">
+          <span class="bp-method" data-bp-method="${i}"></span>
+          <button type="button" class="btn ghost small bp-dim-btn" hidden data-bp-dim="${i}" title="Work the volume out by double interpolation">Interp.</button></td>
+        ${cell('currentVolumePercent')}${cell('currentVolumeM3')}${cell('quantityAddMT')}
+        ${cell('remainingToTargetMT')}
+        <td class="fr-calc" data-bp-cell="${i}.etaLabel"></td>
+      </tr>`;
+    }).join('');
+
+    const modeOpts = Core.DISTRIBUTION_MODES.map((m) =>
+      `<option value="${m.id}" ${view.plan.distributionMode === m.id ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
+
+    return `<div class="form-panel no-print" style="margin-top:16px">
+      <div class="section-title" style="margin-top:0">Sequence${view.full && view.full.distillate ? (view.line === 'B' ? ' — distillate line' : ' — residual line') : ''}</div>
+      <div class="bp-distribute">
+        <label class="fr-field"><span>DISTRIBUTE THE QUANTITY</span>
+          <select id="bp-mode">${modeOpts}</select></label>
+        <button class="btn" id="bp-distribute">Fill sequence</button>
+        <span class="hint" id="bp-distribute-note">Spreads the bunker quantity over the matching tanks,
+          weighted by the space each has below the 85% limit. Targets only — nothing is written to a tank
+          until it is sounded on <b>After Bunkering</b>.</span>
+      </div>
+      <div class="bp-distribute">
+        <label class="fr-field"><span>CURRENT SOUNDINGS ENTERED AS</span>
+          <select id="bp-entry-mode" title="How you read the tape during the transfer. Changing it converts the readings already typed, so the levels stay the same.">
+            ${Core.ENTRY_MODES.map((m) => `<option value="${m.id}" ${Core.entryModeOf(view.plan.soundingEntry) === m.id ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}
+          </select></label>
+        <span class="hint">Dip or ullage for every tank, or each tank in its own method. Switch at any time during bunkering — the readings already typed are converted, so the levels do not change.</span>
+      </div>
+      <div class="hint" id="bp-manual-note" hidden>A tank worked by <b>manual interpolation</b> has no table in the program to turn a
+        volume into a level. For those tanks enter the observed volume in <b>m³</b> in the current column
+        (the <b>Interp.</b> button opens the double interpolation window) and type the starting and target ullage yourself.
+        The volumes, quantities to go and times are worked from the m³ as for any other tank.</div>
+      <div class="bp-layout">
+        <div class="scroll-x">
+          <table class="fr-sheet bp-sheet">
+            <thead><tr>
+              <th>SEQUENCE / TANK NAME</th>
+              <th>CAPACITY<br>100% M3</th><th>CAPACITY<br>85% M3</th><th>STARTING<br>ULL. (CM)</th>
+              <th>STARTING<br>ROB (M3)</th><th>FREE (M3)<br>@85% CAP</th>
+              <th>TARGET<br>VOL. (M3)</th><th>TARGET<br>VOL. %</th><th>TARGET<br>ULL. (CM)</th><th>PLAN ADD<br>(MT)</th>
+              <th>VALVE /<br>STATUS</th>
+              <th>CURRENT<br>${soundLabel(view.plan.soundingEntry)} (CM)</th><th>CURRENT<br>VOL.(%)</th><th>CURRENT<br>VOL.(M3)</th><th>QUANTITY<br>ADD (MT)</th>
+              <th>TO GO<br>(MT)</th><th>ETA</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+            <tfoot><tr>
+              <th>TOTAL</th>
+              <td class="fr-calc" data-bp-total="capacity100M3"></td>
+              <td class="fr-calc" data-bp-total="capacity85M3"></td>
+              <td></td>
+              <td class="fr-calc" data-bp-total="startingRobM3"></td>
+              <td class="fr-calc" data-bp-total="freeM3At85"></td>
+              <td class="fr-calc" data-bp-total="targetVolumeM3"></td>
+              <td></td><td></td>
+              <td class="fr-calc" data-bp-total="plannedAddMT"></td>
+              <td></td><td></td><td></td>
+              <td class="fr-calc" data-bp-total="currentVolumeM3"></td>
+              <td class="fr-calc" data-bp-total="receivedMT"></td>
+              <td class="fr-calc" data-bp-total="remainingToTargetMT"></td>
+              <td></td>
+            </tr></tfoot>
+          </table>
+        </div>
+        <div class="bp-monitor">
+          <div class="bp-monitor-stats">
+            <div class="bp-monitor-box">
+              <span>QUANTITY REMAINING</span><b data-bp-mon="quantityRemainingMT"></b></div>
+            <div class="bp-monitor-box">
+              <span>TIME REMAINING</span><b data-bp-mon="timeRemainingLabel"></b></div>
+            <div class="bp-monitor-box bp-monitor-received">
+              <span data-bp-mon="receivedLabel">RECEIVED</span><b data-bp-mon="receivedMT"></b></div>
+            <div class="bp-progress"><div data-bp-mon="progressFill"></div></div>
+            <div class="hint bp-monitor-progress-text" data-bp-mon="progressText"></div>
+          </div>
+
+          <div class="bp-clock">
+            <div class="bp-clock-row"><span>PUMP START</span>
+              <input type="datetime-local" id="bp-start-at" class="bp-clock-input"></div>
+            <div class="bp-clock-row"><span>PUMPING TIME</span><b data-bp-mon="elapsedLabel">—</b></div>
+            <div class="bp-clock-row"><span>RATE</span><b data-bp-mon="rateLabel">—</b></div>
+            <div class="bp-clock-row"><span>EXPECTED AT RATE</span><b data-bp-mon="expectedMT">—</b></div>
+            <div class="bp-clock-row"><span>MEASURED − EXPECTED</span><b data-bp-mon="varianceMT">—</b></div>
+            <div class="btn-row bp-clock-actions">
+              <button class="btn small primary" id="bp-clock-toggle">Start pumping</button>
+              <button class="btn small" id="bp-clock-reset">Reset</button>
+            </div>
+            <div class="btn-row bp-clock-actions">
+              <button class="btn small" id="bp-finish">Finish bunkering</button>
+              <button class="btn small" id="bp-alert-test" title="Sound the valve warning now, so the volume and the voice can be checked before fuel is on the way">Test alarm</button>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn small" id="bp-fill-85">Target all to 85%</button>
+            <button class="btn small" id="bp-clear-current">Clear current soundings</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  /**
+   * Tank-basis change vs the delivery note.
+   *
+   * Previous / calculated volumes come from the sequence soundings; received is
+   * the difference converted to MT at the plan density. BDN is the note figure
+   * entered in the header — the difference is what the protest turns on.
+   */
+  function planChangeSummaryPanel() {
+    return `<div class="form-panel no-print bp-change" style="margin-top:16px">
+      <div class="section-title" style="margin-top:0">Tank change vs BDN</div>
+      <p class="hint" style="margin-top:0">Sequence tanks only. Volume from soundings; MT from density @15 °C.
+        Enter density and BDN quantity in the header for an accurate comparison.</p>
+      <div class="scroll-x">
+        <table class="fr-sheet bp-change-table">
+          <thead><tr>
+            <th></th>
+            <th>PREVIOUS<br>VOLUME</th>
+            <th>CALCULATED<br>VOLUME</th>
+            <th>VOLUME<br>RECEIVED</th>
+            <th>BDN<br>(NOTE)</th>
+            <th>ACTUAL − BDN</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <th>m³</th>
+              <td data-bp-chg="previousM3">—</td>
+              <td data-bp-chg="calculatedM3">—</td>
+              <td data-bp-chg="receivedM3">—</td>
+              <td data-bp-chg="bdnM3">—</td>
+              <td data-bp-chg="diffM3">—</td>
+            </tr>
+            <tr>
+              <th>MT</th>
+              <td data-bp-chg="previousMT">—</td>
+              <td data-bp-chg="calculatedMT">—</td>
+              <td data-bp-chg="receivedMT">—</td>
+              <td data-bp-chg="bdnMT">—</td>
+              <td data-bp-chg="diffMT">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="hint" data-bp-chg="note">—</div>
+    </div>`;
+  }
+
+  function refreshChangeSummary(c) {
+    const ch = c.tankChange || {};
+    const set = UI.setCell;
+    set('[data-bp-chg="previousM3"]', n(ch.previousVolumeM3, 3, '—'));
+    set('[data-bp-chg="calculatedM3"]', n(ch.calculatedVolumeM3, 3, '—'));
+    set('[data-bp-chg="receivedM3"]', n(ch.receivedVolumeM3, 3, '—'));
+    set('[data-bp-chg="bdnM3"]', n(ch.bdnVolumeM3, 3, '—'));
+    set('[data-bp-chg="diffM3"]', ch.differenceM3 != null ? signed(ch.differenceM3, 3) : '—');
+    set('[data-bp-chg="previousMT"]', n(ch.previousMT, 3, '—'));
+    set('[data-bp-chg="calculatedMT"]', n(ch.calculatedMT, 3, '—'));
+    set('[data-bp-chg="receivedMT"]', n(ch.receivedMT, 3, '—'));
+    set('[data-bp-chg="bdnMT"]', n(ch.bdnQuantityMT, 3, '—'));
+    set('[data-bp-chg="diffMT"]', ch.differenceMT != null ? signed(ch.differenceMT, 3) : '—');
+
+    const dens = ch.density15 != null ? `Density @15 ${n(ch.density15, 4)} · ${n(ch.tempC, 0)} °C.` : 'Enter density @15 °C to convert volume to MT.';
+    const pct = ch.differencePercent != null ? ` Difference ${signed(ch.differencePercent, 2)}% of BDN.` : '';
+    const tanks = ch.tanksCompared
+      ? ` Compared on ${ch.tanksCompared} sounded sequence tank(s).`
+      : ' Sound sequence tanks to measure received volume.';
+    set('[data-bp-chg="note"]', dens + tanks + pct);
+
+    document.querySelectorAll('[data-bp-chg="diffM3"], [data-bp-chg="diffMT"]').forEach((el) => {
+      el.classList.toggle('bp-change-short', ch.differenceMT != null && ch.differenceMT < 0);
+      el.classList.toggle('bp-change-over', ch.differenceMT != null && ch.differenceMT > 0);
+    });
+  }
+
+  /**
+   * Finishing the transfer: the measured intake against the delivery note.
+   *
+   * Nothing projected reaches this panel. The received figure is the sum of
+   * the soundings, and the difference against the note is withheld until every
+   * tank that took fuel has a reading — a shortfall assembled out of tanks
+   * nobody has sounded would send a letter of protest to a supplier who
+   * delivered exactly what the note says.
+   */
+  function planFinishPanel(c) {
+    const h = view.plan.header;
+    return `<div class="form-panel no-print bp-finish" style="margin-top:16px">
+      <div class="section-title" style="margin-top:0">Finish bunkering — delivery note</div>
+      <div class="hint" data-bp-fin="status">—</div>
+      <div class="bp-fin-grid">
+        <div class="bp-est-box"><span>RECEIVED (SOUNDED)</span>
+          <b data-bp-fin="received">—</b><i data-bp-fin="receivedSub"></i></div>
+        <label class="fr-field bp-fin-input"><span>BDN QUANTITY (MT)</span>
+          <input type="number" step="any" data-head="bdnQuantityMT" id="bp-bdn"
+            value="${esc(h.bdnQuantityMT)}"></label>
+        <div class="bp-est-box"><span>DIFFERENCE</span>
+          <b data-bp-fin="difference">—</b><i data-bp-fin="differencePercent"></i></div>
+        <div class="bp-est-box" data-bp-fin="verdictBox"><span>AGAINST THE NOTE</span>
+          <b data-bp-fin="verdict">—</b><i data-bp-fin="verdictSub"></i></div>
+      </div>
+      <div class="bp-est-alarm" data-bp-fin="protest" hidden></div>
+      <div class="btn-row">
+        <button class="btn small" id="bp-to-summary">Open bunker summary</button>
+      </div>
+      <div class="hint">The protest paperwork — barge, supplier, BDN number, samples, times alongside —
+        is on <b>Bunker Summary</b>. The quantity entered here is carried across to it.</div>
+    </div>`;
+  }
+
+  /** Fill the finish panel from a fresh computation. */
+  function refreshFinish(c) {
+    const set = UI.setCell;
+    const r = c.reconciliation;
+
+    const pending = {
+      'no-tanks': 'No tank has taken fuel yet.',
+      unsounded: `Waiting on a final sounding for ${r.tanksUnsounded.join(', ')}.`
+        + ' Until every tank that took fuel is sounded there is no measured intake to hold'
+        + ' against the note.',
+      'no-bdn': 'Enter the quantity from the delivery note to compare it with the soundings.',
+    };
+    set('[data-bp-fin="status"]', r.reconcilable
+      ? `Reconciled against ${r.tanksUsed} sounded tank(s)${
+        r.finished ? ', transfer finished' : ' — the transfer is still open'}.`
+      : (pending[r.pendingReason] || '—'));
+
+    set('[data-bp-fin="received"]', `${n(r.receivedMT, 3)} MT`);
+    set('[data-bp-fin="receivedSub"]', r.tanksUnsounded.length
+      ? `${r.tanksUsed - r.tanksUnsounded.length} of ${r.tanksUsed} tanks sounded`
+      : `all ${r.tanksUsed} tank(s) sounded`);
+    set('[data-bp-fin="difference"]', r.differenceMT != null ? `${signed(r.differenceMT, 3)} MT` : '—');
+    set('[data-bp-fin="differencePercent"]', r.differencePercent != null
+      ? `${signed(r.differencePercent, 3)}% of the note` : '');
+
+    const box = document.querySelector('[data-bp-fin="verdictBox"]');
+    const bad = r.protestAdvised === true;
+    if (box) {
+      box.classList.toggle('bp-fin-bad', bad);
+      box.classList.toggle('bp-fin-good', r.withinTolerance === true);
+    }
+    set('[data-bp-fin="verdict"]', r.withinTolerance == null ? '—'
+      : (r.withinTolerance ? 'Within tolerance' : (bad ? 'Short delivery' : 'Over delivery')));
+    set('[data-bp-fin="verdictSub"]', r.withinTolerance == null ? ''
+      : `tolerance ±${r.tolerancePercent}%`);
+
+    const alarm = document.querySelector('[data-bp-fin="protest"]');
+    if (alarm) {
+      alarm.hidden = !bad;
+      alarm.textContent = bad
+        ? `Short of the delivery note by ${n(Math.abs(r.differenceMT), 3)} MT `
+          + `(${n(Math.abs(r.differencePercent), 3)}%), beyond the ${r.tolerancePercent}% tolerance. `
+          + 'Grounds for a letter of protest — raise it on Bunker Summary before the barge casts off.'
+        : '';
+    }
+  }
+
+  /**
+   * Operation estimates — everything on this panel is projected, none of it
+   * measured.
+   *
+   * It is kept in its own panel, away from the CURRENT SOUND column, on
+   * purpose. What is typed into that column is a measurement, and it feeds the
+   * received quantity the delivery note is reconciled against. An estimate
+   * sitting in or beside that box invites somebody to copy it across on a busy
+   * deck, and a projected figure has no business on a bunker dispute.
+   *
+   * So: soundings are entered on the sequence sheet, projections are read here,
+   * and the two totals are shown side by side so the gap between them is
+   * visible rather than blurred.
+   */
+  function planEstimatesPanel() {
+    return `<div class="form-panel no-print bp-estimates" style="margin-top:16px">
+      <div class="section-title" style="margin-top:0">Operation estimates</div>
+      <div class="hint bp-est-basis" data-bp-est-mon="basis">—</div>
+      <div class="bp-est-alarm" data-bp-est-mon="alarm" hidden></div>
+      <div class="bp-est-grid">
+        <div class="bp-est-box"><span>PROJECTED RATE</span>
+          <b data-bp-est-mon="rate">—</b><i data-bp-est-mon="rateShare"></i></div>
+        <div class="bp-est-box"><span>ESTIMATED RECEIVED</span>
+          <b data-bp-est-mon="received">—</b><i data-bp-est-mon="receivedSub"></i></div>
+        <div class="bp-est-box"><span>AHEAD OF SOUNDINGS</span>
+          <b data-bp-est-mon="ahead">—</b><i>not yet confirmed by a sounding</i></div>
+        <div class="bp-est-box"><span>ESTIMATED REMAINING</span>
+          <b data-bp-est-mon="remaining">—</b><i data-bp-est-mon="remainingSub"></i></div>
+        <div class="bp-est-box bp-est-countdown"><span>FINISHES IN</span>
+          <b data-bp-est-mon="countdown">—</b><i data-bp-est-mon="etcAt"></i></div>
+      </div>
+      <div class="scroll-x">
+        <table class="fr-sheet bp-est-sheet">
+          <thead><tr>
+            <th>TANK</th><th>SHARE<br>(MT/H)</th>
+            <th>EST. SOUND<br>(MM)</th><th>EST. ULLAGE<br>(MM)</th>
+            <th>EST. VOL<br>(%)</th><th>EST. VOL<br>(M3)</th><th>EST. ADDED<br>(MT)</th>
+            <th>TARGET<br>IN</th><th>TARGET<br>AT</th><th>HITS 85%<br>IN</th><th>PROJECTED FROM</th>
+          </tr></thead>
+          <tbody data-bp-est-body></tbody>
+        </table>
+      </div>
+      <div class="hint">Projected from the last real measurement at the rate above — never counted as
+        received, and never written into a tank. Sound the tank and enter the reading on the sequence
+        sheet to turn any of this into a figure that counts.</div>
+    </div>`;
+  }
+
+  /**
+   * Blend the ROB already aboard with the incoming parcel. The result can be
+   * dropped straight into the plan's density field, which is what every
+   * quantity on the sheet is converted with.
+   */
+  function planBlendPanel() {
+    const row = (label, dens, mt) => `<tr>
+      <td><input data-mix="label" value="${esc(label)}"></td>
+      <td><input data-mix="density15" type="number" step="any" placeholder="${dens}"></td>
+      <td><input data-mix="quantityMT" type="number" step="any" placeholder="${mt}"></td>
+      <td><input data-mix="tempC" type="number" step="any" value="15"></td>
+    </tr>`;
+    return `<div class="form-panel no-print" style="margin-top:16px">
+      <div class="section-title" style="margin-top:0">Blend calculator — ROB and bunker of different density</div>
+      <div class="btn-row">
+        <button class="btn small" id="bp-blend-toggle">Show</button>
+      </div>
+      <div id="bp-blend" hidden>
+        <div class="scroll-x"><table class="data-table" id="bp-mix-table">
+          <thead><tr><th>Parcel</th><th>Density @15</th><th>Quantity MT</th><th>Temp °C</th></tr></thead>
+          <tbody>${row('ROB on board', '0.960', '200')}${row('Incoming bunker', '0.945', '450')}</tbody>
+        </table></div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn small" id="bp-mix-add">Add parcel</button>
+          <button class="btn small primary" id="bp-mix-calc">Calculate blend</button>
+        </div>
+        <div id="bp-mix-result" style="margin-top:10px"></div>
+      </div>
+    </div>`;
+  }
+
+  /** BEFORE / AFTER bunkering tank tables — sequence tanks only.
+   *
+   * Full-vessel soundings stay on Monitoring and After Bunkering. The plan
+   * shows only tanks in the fill sequence so before/after (and received) stay
+   * on the tank basis of what is being bunkered.
+   */
+  function planTankTablesPanel(c) {
+    return `<div class="form-panel no-print" id="bp-tank-tables" style="margin-top:16px">
+      ${planTankTablesHtml(c)}
+    </div>`;
+  }
+
+  function planTankTablesHtml(c) {
+    const tankIds = Core.sequenceTankIds(view.plan || (c && c.form));
+    const before = Core.filterReportToTankIds(c && c.before, tankIds);
+    // Until the after-report has been saved it is only a copy of the pre-bunker
+    // soundings, so show the prompt rather than the same numbers twice.
+    const saved = Boolean(bundle().bunkerAfter);
+    const afterFull = saved
+      ? Core.computeAfterBunkering(bundle(), bundle().bunkerAfter, view.conversion)
+      : null;
+    const after = afterFull
+      ? readOnlyTankTable(Core.filterReportToTankIds(afterFull, tankIds), {
+        empty: tankIds.length
+          ? 'No soundings yet for the tanks in this sequence'
+          : 'Select tanks in the sequence first',
+      })
+      : `<p class="empty-state">Not sounded yet — record the tanks on
+         <b>After Bunkering</b> and this table fills in for the sequence tanks.</p>`;
+    return `
+      <div class="section-title" style="margin-top:0">Before bunkering — sequence tanks</div>
+      <p class="hint" style="margin-top:0">Only tanks in the bunkering sequence (tank-basis received).
+        Full vessel soundings stay on <b>Monitoring</b> and <b>After Bunkering</b>.</p>
+      ${readOnlyTankTable(before, {
+        empty: tankIds.length
+          ? 'No fuel-report soundings yet for the tanks in this sequence'
+          : 'Select tanks in the sequence to show before condition',
+      })}
+      <div class="section-title">After bunkering — sequence tanks</div>
+      <p class="hint" style="margin-top:0">Same tanks after the transfer, for received quantity on a tank basis.</p>
+      ${after}`;
+  }
+
+  function readOnlyTankTable(report, opts = {}) {
+    const empty = opts.empty || 'No soundings';
+    const rows = [];
+    for (const section of (report && report.sections) || []) {
+      for (const row of section.rows) {
+        if (row.measuredM3 == null) continue;
+        rows.push(`<tr>
+          <td class="fr-tank-name">${esc(row.name)}</td>
+          <td>${n(row.capacity100M3, 1)}</td>
+          <td>${n(row.capacity85M3, 2)}</td>
+          <td>${esc(row.methodLabel)}</td>
+          <td>${n(row.reading, 0)}</td>
+          <td>${n(row.measuredM3, 3)}</td>
+          <td>${n(row.tempC, 0)}</td>
+          <td>${n(row.density15, 4)}</td>
+          <td>${n(row.vcf, 4)}</td>
+          <td>${pct(row.volumePercent)}</td>
+          <td>${n(row.gsv15M3, 3)}</td>
+          <td>${n(row.wcf, 4)}</td>
+          <td><b>${n(row.weightAirMT, 3)}</b></td>
+        </tr>`);
+      }
+    }
+    const grades = ((report && report.grades) || []).filter((g) => g.actualMT != null)
+      .map((g) => `${g.label} ${n(g.actualMT, 3)} MT`).join(' · ');
+    return `<div class="scroll-x"><table class="fr-sheet">
+      <thead><tr>
+        <th>TANK NAME</th><th>VOLUME<br>100%</th><th>VOLUME<br>85%</th><th>SOUNDING<br>METHOD</th>
+        <th>SOUNDING<br>(MM)</th><th>OBSERVED<br>VOLUME</th><th>TEMP<br>°C</th><th>DENSITY<br>15°C</th>
+        <th>VCF<br>54-B</th><th>OBSERVED<br>VOL %</th><th>CORRECTED<br>VOL M3</th><th>WCF<br>56</th><th>WEIGHT BY<br>AIR MT</th>
+      </tr></thead>
+      <tbody>${rows.join('') || `<tr><td colspan="13" class="empty-state">${esc(empty)}</td></tr>`}</tbody>
+    </table></div>
+    <div class="hint">${grades ? esc('Totals: ' + grades) : 'No totals yet'}</div>`;
+  }
+
+  /** An ISO instant as a datetime-local input wants it, in the device's zone. */
+  function localInputValue(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad2 = (x) => String(x).padStart(2, '0');
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+      + `T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  /** Fill the estimates panel from a fresh computation. */
+  function refreshEstimates(c) {
+    const set = UI.setCell;
+    const m = c.monitoring;
+    const clockTime = (iso) => (iso
+      ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '—');
+
+    // The alarm box below names the tanks already over; here, only the warning
+    // that has not fired yet.
+    const limitNote = m.estimatedLimitSoonestHours != null
+      ? ` First tank reaches the 85% limit in ${Core.hmsLabel(m.estimatedLimitSoonestHours)}.`
+      : '';
+    set('[data-bp-est-mon="basis"]', m.estimating
+      ? `Projecting at the rate ${m.estimateBasisLabel}.${limitNote}`
+      : (m.tanksFilling
+        ? 'Nothing to project from yet — enter a delivery rate and a density.'
+        : 'No tank is open. Estimates start once a valve is opened.'));
+
+    const alarm = document.querySelector('[data-bp-est-mon="alarm"]');
+    if (alarm) {
+      const over = m.estimatedOverLimitTanks || [];
+      alarm.hidden = over.length === 0;
+      alarm.textContent = over.length
+        ? `${over.length} tank(s) projected above the 85% filling limit — ${over.join(', ')}. `
+          + 'Sound them now; this is a projection, not a reading.'
+        : '';
+    }
+
+    set('[data-bp-est-mon="rate"]', m.estimating ? `${n(m.estimateRateMTPerHour, 1)} MT/h` : '—');
+    set('[data-bp-est-mon="rateShare"]', m.estimating && m.tanksFilling
+      ? `${n(m.estimateShareMTPerHour, 1)} MT/h into each of ${m.tanksFilling} tank(s)` : '');
+    set('[data-bp-est-mon="received"]', m.estimatedReceivedMT != null
+      ? `${n(m.estimatedReceivedMT, 3)} MT` : '—');
+    set('[data-bp-est-mon="receivedSub"]', `sounded so far: ${n(m.receivedMT, 3)} MT`);
+    set('[data-bp-est-mon="ahead"]', m.estimatedAheadMT != null
+      ? `${signed(m.estimatedAheadMT, 3)} MT` : '—');
+    set('[data-bp-est-mon="remaining"]', m.estimatedRemainingMT != null
+      ? `${n(m.estimatedRemainingMT, 3)} MT` : '—');
+    set('[data-bp-est-mon="remainingSub"]', m.estimatedPercentComplete != null
+      ? `${n(m.estimatedPercentComplete, 1)}% of ${n(c.header.bunkerQuantityMT, 1)} MT` : '');
+    set('[data-bp-est-mon="countdown"]', m.estimatedEtcLabel || '—');
+    set('[data-bp-est-mon="etcAt"]', m.estimatedEtcAtIso
+      ? `completing about ${clockTime(m.estimatedEtcAtIso)}` : '');
+    // Let the per-second tick run this down between recomputes.
+    countdownEndsAt = m.estimatedEtcAtIso ? Date.parse(m.estimatedEtcAtIso) : null;
+
+    const body = document.querySelector('[data-bp-est-body]');
+    if (!body) return;
+    const rows = c.rows.filter((r) => r.tankId && r.estimateRateMTPerHour > 0);
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="11" class="bp-est-empty">${
+        m.tanksFilling ? 'Waiting for the first minute of pumping.'
+          : 'Open a tank on the sequence sheet to project it.'}</td></tr>`;
+      return;
+    }
+    body.innerHTML = rows.map((r) => {
+      const from = r.estimatedFrom
+        ? `${esc(r.estimatedFrom)}, ${esc(r.estimatedAgeLabel)} ago`
+        : 'just opened';
+      const method = r.startingMethod ? `<i>${esc(r.startingMethod)}</i>` : '';
+      return `<tr data-bp-est-slot="${r.slot - 1}" class="${r.estimatedOverLimit ? 'bp-est-over' : ''}">
+        <th class="fr-tank-name">${esc(r.name)}</th>
+        <td>${n(r.estimateRateMTPerHour, 1)}</td>
+        <td class="bp-est-figure">${n(FRCore.mmToCm(r.estimatedSoundingMM), 1)}${method}</td>
+        <td>${n(r.estimatedUllageMM, 0)}</td>
+        <td>${pct(r.estimatedVolumePercent)}</td>
+        <td>${n(r.estimatedVolumeM3, 3)}</td>
+        <td>${n(r.estimatedAddedMT, 3)}</td>
+        <td>${esc(r.estimatedToTargetLabel)}</td>
+        <td>${clockTime(r.estimatedTargetAtIso)}</td>
+        <td class="bp-est-limit">${esc(r.estimatedToLimitLabel)}</td>
+        <td class="bp-est-from">${from}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  /**
+   * Which sense the CURRENT SOUND box wants for this tank, and where it
+   * started.
+   *
+   * The column takes the reading in the tank's own gauging method, but every
+   * other reading on this sheet is an ullage, and the box used to say nothing
+   * at all. Entering the ullage into a dipped tank turns an empty tank into a
+   * full one. The tag says which is wanted; the placeholder shows the tank's
+   * opening reading in that same sense, so there is something to measure the
+   * new one against.
+   */
+  function paintSoundingMethod(i, row) {
+    const tag = document.querySelector(`[data-bp-method="${i}"]`);
+    const box = document.querySelector(`input[data-slot="${i}"][data-field="currentSoundingMM"]`);
+    if (tag) {
+      const tk = row.tankId ? tankById(row.tankId) : null;
+      const directM3 = tk && FRCore.usesDirectM3Input && FRCore.usesDirectM3Input(tk);
+      const way = row.currentMethod || row.startingMethod;
+      tag.textContent = directM3 ? 'M³'
+        : (row.tankId && way ? String(way).toUpperCase() : '');
+      tag.title = directM3
+        ? 'Enter observed volume in m³ (gauge or double interpolation).'
+        : (way
+          ? (Core.entryModeOf(view.plan.soundingEntry) === 'own'
+            ? `This tank is gauged by ${way}. Enter the reading the same way.`
+            : `Current soundings are being entered as ${way}.`)
+          : '');
+      tag.classList.toggle('bp-method-bad', Boolean(row.reversedReading));
+    }
+    if (box) {
+      const from = row.startingReadingEntryMM != null ? row.startingReadingEntryMM : row.startingReadingMM;
+      box.placeholder = row.tankId && from != null
+        ? `from ${n(from, 0)}` : '';
+    }
+  }
+
+  /**
+   * The per-tank valve cell: what the tank is doing, how long it has been doing
+   * it, and the buttons to open, hold or close it.
+   */
+  function paintValveCell(i, row) {
+    const cell = document.querySelector(`[data-bp-valve="${i}"]`);
+    if (!cell) return;
+    if (!row.tankId) { cell.innerHTML = ''; return; }
+    const state = Core.TANK_STATES.find((s) => s.id === row.status) || Core.TANK_STATES[0];
+    const closeable = row.status === 'filling' || row.status === 'paused';
+    cell.innerHTML = `
+      <span class="bp-state bp-state-${state.id}">${esc(state.label)}</span>
+      <span class="bp-state-time"><span data-bp-tank-time="${i}">${
+        esc(row.clock.elapsedLabelLive || row.clock.elapsedLabel)}</span>${
+        row.rateShareMTPerHour > 0 ? ` · ${n(row.rateShareMTPerHour, 0)} MT/h` : ''}</span>
+      <span class="bp-state-btns">
+        <button class="btn small ${state.id === 'filling' ? '' : 'primary'}"
+          data-valve="${i}" data-valve-to="${state.next}">${esc(state.action)}</button>
+        ${closeable ? `<button class="btn small" data-valve="${i}" data-valve-to="done">Close</button>` : ''}
+      </span>`;
+  }
+
+  function refreshPlan() {
+    const c = recomputePlan();
+    const set = UI.setCell;
+
+    set('[data-bp-head="meanDraft"]', n(c.header.meanDraft, 3));
+    set('[data-bp-head="trim"]', n(c.header.trim, 2));
+    set('[data-bp-head="afterTrim"]', c.header.afterTrim != null ? n(c.header.afterTrim, 2) : '—');
+    set('[data-bp-head="timeToBunker"]', c.header.timeToBunkerLabel);
+
+    const advice = [];
+    if (c.monitoring.freeSpaceShortfallM3 != null && c.monitoring.freeSpaceShortfallM3 > 0) {
+      advice.push(`the selected tanks are ${n(c.monitoring.freeSpaceShortfallM3, 1)} m³ short of holding `
+        + `${n(c.header.bunkerQuantityMT, 1)} MT at the 85% limit — add another tank`);
+    }
+    if (c.monitoring.planCoversQuantity != null && Math.abs(c.monitoring.planCoversQuantity) > 0.5) {
+      advice.push(`targets add up to ${signed(c.monitoring.planCoversQuantity, 1)} MT against the bunker quantity`);
+    }
+    if (c.header.density15 == null) advice.push('no density — enter density @15 °C to get quantities in MT');
+    set('[data-bp-head="advice"]', advice.length
+      ? `Check: ${advice.join('; ')}.`
+      : `Trim ${signed(c.header.trim, 2)} m ${FRCore.trimSense(c.header.trim)} · `
+        + `density ${n(c.header.density15, 4, '—')} @ ${n(c.header.tempC, 0)} °C`);
+
+    const manualNote = document.getElementById('bp-manual-note');
+    if (manualNote) manualNote.hidden = !c.rows.some((r) => r.tankId && r.manualGauge);
+    for (const row of c.rows) {
+      const i = row.slot - 1;
+      for (const col of PLAN_COLUMNS) {
+        set(`[data-bp-cell="${i}.${col.field}"]`, planCell(col.field, row[col.field]),
+          row.warnings.length ? row.warnings.join(' · ') : '');
+      }
+      set(`[data-bp-cell="${i}.etaLabel"]`, row.tankId ? row.etaLabel : '');
+      /* Manual-interpolation tank: the two ullages are typed, and the interpolation window is offered. */
+      document.querySelectorAll(`[data-bp-ull^="${i}."]`).forEach((inp) => { inp.hidden = !row.manualGauge; });
+      ['startingUllageMM', 'targetUllageMM'].forEach((f) => {
+        const span = document.querySelector(`[data-bp-cell="${i}.${f}"]`);
+        if (span) span.hidden = !!row.manualGauge;
+      });
+      const dimBtn = document.querySelector(`[data-bp-dim="${i}"]`);
+      if (dimBtn) dimBtn.hidden = !row.manualGauge;
+      paintSoundingMethod(i, row);
+      paintValveCell(i, row);
+      const tr = document.querySelector(`tr[data-slot="${i}"]`);
+      if (tr) {
+        tr.classList.toggle('fr-warn', row.warnings.length > 0);
+        tr.classList.toggle('bp-row-filling', row.status === 'filling');
+        tr.classList.toggle('bp-row-done', row.status === 'done');
+      }
+    }
+    for (const [field, d] of Object.entries({
+      capacity100M3: 1, capacity85M3: 2, startingRobM3: 3, freeM3At85: 3,
+      targetVolumeM3: 3, plannedAddMT: 3, currentVolumeM3: 3, receivedMT: 3,
+      remainingToTargetMT: 3,
+    })) {
+      set(`[data-bp-total="${field}"]`, n(c.totals[field], d));
+    }
+
+    const gradeLabel = (FRCore.FUEL_TYPES.find((f) => f.id === c.header.fuelType) || {}).label || '';
+    set('[data-bp-mon="receivedLabel"]', `${gradeLabel} RECEIVED`);
+    set('[data-bp-mon="receivedMT"]', `${n(c.monitoring.receivedMT, 3)} MT`);
+    set('[data-bp-mon="quantityRemainingMT"]', c.monitoring.quantityRemainingMT != null
+      ? `${n(c.monitoring.quantityRemainingMT, 3)} MT` : '—');
+    set('[data-bp-mon="timeRemainingLabel"]', c.monitoring.timeRemainingLabel);
+    const openTanks = c.monitoring.tanksFilling;
+    set('[data-bp-mon="progressText"]', (c.monitoring.percentComplete != null
+      ? `${n(c.monitoring.percentComplete, 1)}% of ${n(c.header.bunkerQuantityMT, 1)} MT delivered`
+      : 'Enter a bunker quantity to track progress')
+      + (openTanks
+        ? ` · ${openTanks} tank(s) taking fuel at ${n(c.monitoring.rateSharePerTank, 0)} MT/h each`
+        : ' · no tank is open'));
+    const fill = document.querySelector('[data-bp-mon="progressFill"]');
+    if (fill) fill.style.width = `${Math.max(0, Math.min(100, c.monitoring.percentComplete || 0))}%`;
+
+    const clock = c.monitoring.clock;
+    set('[data-bp-mon="elapsedLabel"]', clock.elapsedLabelLive || clock.elapsedLabel);
+    const mon = c.monitoring;
+    // Say which rate the finishing time is built on. A number worked out from
+    // what has actually come aboard is worth more than the one agreed ashore,
+    // but only once enough has come aboard to mean anything.
+    set('[data-bp-mon="rateLabel"]', mon.effectiveRateMTPerHour > 0
+      ? `${n(mon.effectiveRateMTPerHour, 1)} MT/h ${mon.rateSourceIsMeasured ? '(measured)' : '(planned)'}`
+      : '—');
+    refreshEstimates(c);
+    refreshChangeSummary(c);
+    refreshFinish(c);
+    const tables = document.getElementById('bp-tank-tables');
+    if (tables) tables.innerHTML = planTankTablesHtml(c);
+    const startBox = document.getElementById('bp-start-at');
+    if (startBox && document.activeElement !== startBox) {
+      startBox.value = view.plan.startedAt ? localInputValue(view.plan.startedAt) : '';
+    }
+    set('[data-bp-mon="expectedMT"]', clock.expectedMT != null ? `${n(clock.expectedMT, 2)} MT` : '—');
+    /* Only a variance once there is something to hold against the expected
+       intake. Unsounded tanks make received read 0, and the difference then
+       looks like the barge short-delivered the whole parcel. */
+    set('[data-bp-mon="varianceMT"]',
+      clock.varianceMT != null && mon.tanksSounded > 0 ? `${signed(clock.varianceMT, 2)} MT` : '—',
+      mon.tanksSounded > 0
+        ? `Against ${mon.tanksSounded} of ${mon.tanksFilling} open tank(s) sounded.`
+        : 'No tank has been sounded yet — nothing to compare against the expected intake.');
+    const toggle = document.getElementById('bp-clock-toggle');
+    if (toggle) {
+      /* A finished transfer must not still offer to pause itself. Reopening is
+         offered instead, so a transfer finished by mistake — or one the barge
+         resumes after a stoppage — is not stuck behind a Reset that would
+         throw the pumping time away. */
+      toggle.textContent = clock.completed ? 'Reopen transfer'
+        : !clock.started ? 'Start pumping' : clock.paused ? 'Resume' : 'Pause';
+      toggle.classList.toggle('primary', !clock.started || clock.paused);
+    }
+    const finish = document.getElementById('bp-finish');
+    if (finish) {
+      finish.disabled = clock.completed || !clock.started;
+      finish.title = clock.completed ? 'The transfer is already finished.'
+        : (!clock.started ? 'Start pumping first.' : '');
+    }
+    refreshLinesStrip(c);
+    updateBunkerAlerts();
+  }
+
+  /**
+   * Open, hold or close one tank. Timing is per tank: a pause stops that tank's
+   * own clock, closing it stops it for good, and reopening starts it fresh.
+   */
+  function setTankState(index, next) {
+    const slot = view.plan.sequence[index];
+    if (!slot || !slot.tankId) return;
+    const nowIso = new Date().toISOString();
+
+    if (next === 'filling') {
+      if (slot.status === 'paused' && slot.pausedAt) {
+        slot.elapsedPausedMs = (slot.elapsedPausedMs || 0)
+          + Math.max(0, Date.now() - Date.parse(slot.pausedAt));
+      }
+      if (!slot.startedAt) slot.startedAt = nowIso;
+      slot.pausedAt = null;
+      slot.completedAt = null;
+      slot.status = 'filling';
+      slot.pausedWithOperation = false;
+      // Opening a tank starts the overall pumping clock if it is not running.
+      if (!view.plan.startedAt) {
+        view.plan.startedAt = nowIso;
+        view.plan.pausedAt = null;
+        view.plan.elapsedPausedMs = 0;
+        view.plan.status = 'pumping';
+      }
+      startClockTicker();
+    } else if (next === 'paused') {
+      slot.pausedAt = nowIso;
+      slot.status = 'paused';
+      // Shut by hand: resuming the operation must not reopen it.
+      slot.pausedWithOperation = false;
+    } else if (next === 'done') {
+      if (slot.status === 'paused' && slot.pausedAt) {
+        slot.elapsedPausedMs = (slot.elapsedPausedMs || 0)
+          + Math.max(0, Date.now() - Date.parse(slot.pausedAt));
+      }
+      slot.pausedAt = null;
+      slot.completedAt = nowIso;
+      slot.status = 'done';
+    } else {
+      // Reopen — clear this tank's timing and put it back in the queue.
+      slot.status = 'pending';
+      slot.startedAt = null;
+      slot.pausedAt = null;
+      slot.elapsedPausedMs = 0;
+      slot.completedAt = null;
+    }
+    refreshPlan();
+    persistPlanClock();
+  }
+
+  /**
+   * Pausing the transfer shuts the valves.
+   *
+   * The overall clock stopping while every tank still reads FILLING said the
+   * pumps had stopped and the tanks were still taking fuel at the same time.
+   * Every tank that was filling is paused with the operation, and each one is
+   * marked so that resuming reopens exactly those — a tank the engineer had
+   * already shut by hand stays shut.
+   */
+  function pauseTanksWithOperation(nowIso) {
+    for (const slot of view.plan.sequence || []) {
+      if (!slot || !slot.tankId || slot.status !== 'filling') continue;
+      slot.pausedAt = nowIso;
+      slot.status = 'paused';
+      slot.pausedWithOperation = true;
+    }
+  }
+
+  function resumeTanksPausedWithOperation(nowIso) {
+    for (const slot of view.plan.sequence || []) {
+      if (!slot || !slot.pausedWithOperation) continue;
+      if (slot.status === 'paused' && slot.pausedAt) {
+        slot.elapsedPausedMs = (slot.elapsedPausedMs || 0)
+          + Math.max(0, Date.now() - Date.parse(slot.pausedAt));
+      }
+      slot.pausedAt = null;
+      slot.status = 'filling';
+      slot.pausedWithOperation = false;
+    }
+  }
+
+  function bindPlanEvents(wrap) {
+    /* A manual-interpolation tank: work its volume out in the double interpolation window, with the plan's drafts. */
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest && e.target.closest('[data-bp-dim]');
+      if (!btn || !window.TankDoubleInterpManual) return;
+      const i = Number(btn.dataset.bpDim);
+      const slot = view.plan.sequence[i];
+      const tk = slot && slot.tankId ? tankById(slot.tankId) : null;
+      if (!slot || !tk) return;
+      const h = view.plan.header || {};
+      const fwd = Number(h.draftFwd), aft = Number(h.draftAft);
+      const heel = h.heel === '' || h.heel == null ? 0 : Number(h.heel);
+      window.TankDoubleInterpManual.open({
+        tankId: tk.id,
+        tankName: tk.name,
+        initialVolumeM3: slot.currentSoundingMM === '' || slot.currentSoundingMM == null ? null : Number(slot.currentSoundingMM),
+        trimByStern: Number.isFinite(fwd) && Number.isFinite(aft) ? (aft - fwd) : 0,
+        heelDeg: Number.isFinite(heel) ? heel : 0,
+        onApply: (m3) => {
+          slot.currentSoundingMM = Number(m3);
+          const tc = Core.tankClock(slot);
+          slot.currentSoundingAtElapsedH = tc.elapsedHours || 0;
+          slot.currentSoundingAt = new Date().toISOString();
+          const box = document.querySelector(`input[data-slot="${i}"][data-field="currentSoundingMM"]`);
+          if (box) box.value = String(m3);
+          refreshPlan();
+        },
+      });
+    });
+    wrap.addEventListener('input', (e) => {
+      const el = e.target;
+      if (el.dataset.slot != null && el.dataset.field) {
+        const slot = view.plan.sequence[Number(el.dataset.slot)];
+        if (slot) {
+          if (el.dataset.field === 'currentSoundingMM') {
+            const tk = slot.tankId ? tankById(slot.tankId) : null;
+            const directM3 = tk && FRCore.usesDirectM3Input && FRCore.usesDirectM3Input(tk);
+            slot.currentSoundingMM = directM3
+              ? (el.value === '' ? '' : Number(el.value))
+              : FRCore.cmToMm(el.value);
+            // Anchor the estimate on this reading, in the tank's own running
+            // hours so time spent shut is not counted as time taking fuel.
+            const tc = Core.tankClock(slot);
+            slot.currentSoundingAtElapsedH = tc.elapsedHours || 0;
+            slot.currentSoundingAt = new Date().toISOString();
+          } else if (el.dataset.field === 'startingUllageMM' || el.dataset.field === 'targetUllageMM') {
+            /* Typed in cm by the chief for a manual tank; kept in mm like every other level. */
+            slot[el.dataset.field] = el.value === '' ? '' : FRCore.cmToMm(el.value);
+          } else {
+            slot[el.dataset.field] = el.value;
+          }
+        }
+      } else if (el.dataset.head) {
+        view.plan.header[el.dataset.head] = el.value;
+      } else {
+        return;
+      }
+      refreshPlan();
+    });
+
+    document.getElementById('bp-print-save').onclick = async () => {
+      const name = await askPlanName();
+      if (name === null) return;
+      view.plan.saveName = name;
+      pendingPlanName = name;
+      Branding.beginPrintHold();
+      try {
+        await saveChainPart('bunker-plan', 'bunkerPlan', fullPlan(true), { snapshot: true, deferServer: true });
+        refreshPlanHistory();
+        UI.printHtml(planPrintPages(printPlans()));
+      } catch (err) {
+        Branding.endPrintHold();
+        throw err;
+      } finally {
+        pendingPlanName = null;
+      }
+    };
+    document.getElementById('bp-save').onclick = async () => {
+      const name = await askPlanName();
+      if (name === null) return;
+      view.plan.saveName = name;
+      pendingPlanName = name;
+      try {
+        await saveChainPart('bunker-plan', 'bunkerPlan', fullPlan(true), { snapshot: true });
+        refreshPlanHistory();
+      } finally {
+        pendingPlanName = null;
+      }
+    };
+    // Print without saving: no snapshot filed, nothing written to the vessel.
+    document.getElementById('bp-print-only').onclick = () =>
+      UI.printHtml(planPrintPages(printPlans()));
+    const bpMenu = document.getElementById('bp-menu');
+    if (bpMenu) bpMenu.onclick = () => {
+      /* Bunker-ops embed under ChEng AIO: leave the embed for AIO Home — do not
+         dump into Tank's dashboard (no in-iframe way back to the plan). */
+      if (typeof isBunkerOpsEmbed === 'function' && isBunkerOpsEmbed()) {
+        if (requestAioNavigate('home')) return;
+        showToast('Use the ChEng AIO Home control to leave Bunkering Plan');
+        return;
+      }
+      navigate('dashboard');
+    };
+    wrap.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-bp-line]');
+      if (t) switchLine(t.dataset.bpLine);
+    });
+    wrap.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const t = e.target.closest('.bp-line-card[data-bp-line]');
+      if (t) { e.preventDefault(); switchLine(t.dataset.bpLine); }
+    });
+    const addD = document.getElementById('bp-add-distillate');
+    if (addD) addD.onclick = () => {
+      view.pendingPlan = Core.addDistillateLine(bundle(), fullPlan(), view.conversion);
+      view.line = 'B';
+      navigate('bunker-plan');
+      showToast('Distillate line added — set its grade, rate and tanks');
+    };
+    const rmD = document.getElementById('bp-remove-distillate');
+    if (rmD) rmD.onclick = () => {
+      if (!confirm('Remove the distillate line? Its grade, rate, tanks and clock are cleared.')) return;
+      view.pendingPlan = Core.removeDistillateLine(fullPlan());
+      view.line = 'A';
+      navigate('bunker-plan');
+    };
+    document.getElementById('bp-new').onclick = () => {
+      if (!confirm('Start a new plan? The current sequence and targets are cleared.')) return;
+      /* A new plan clears both lines; the distillate line stays if there is one. */
+      const fresh = Core.normalizePlan(bundle(), Core.emptyBunkerPlan(bundle(), view.conversion), view.conversion);
+      view.pendingPlan = view.full && view.full.distillate ? Core.addDistillateLine(bundle(), fresh, view.conversion) : fresh;
+      navigate('bunker-plan');
+    };
+    // Valve buttons live inside cells that are repainted on every refresh, so
+    // they are handled by delegation rather than bound per button.
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-valve]');
+      if (!btn) return;
+      setTankState(Number(btn.dataset.valve), btn.dataset.valveTo);
+    });
+
+    document.getElementById('bp-mode').onchange = (e) => { view.plan.distributionMode = e.target.value; };
+    /* Dip or ullage for the current soundings. The readings already typed are converted to the new way, tank by
+       tank (dip = pipe height − ullage), so the level in every tank stays what was measured. */
+    document.getElementById('bp-entry-mode').onchange = (e) => {
+      const next = Core.entryModeOf(e.target.value);
+      const prev = Core.entryModeOf(view.plan.soundingEntry);
+      if (next === prev) return;
+      const rows = (recomputePlan().rows) || [];
+      view.plan.sequence.forEach((slot, i) => {
+        if (!slot || !slot.tankId || slot.currentSoundingMM === '' || slot.currentSoundingMM == null) return;
+        const tk = tankById(slot.tankId);
+        if (!tk || (FRCore.usesDirectM3Input && FRCore.usesDirectM3Input(tk))) return;
+        const own = (rows[i] && rows[i].startingMethod) || FRCore.normalizeMethod(tk.soundingMethod);
+        const converted = Core.convertReading(tk, slot.currentSoundingMM, Core.entryMethodFor(prev, own), Core.entryMethodFor(next, own));
+        if (converted != null) slot.currentSoundingMM = converted;
+      });
+      view.plan.soundingEntry = next;
+      view.pendingPlan = fullPlan();
+      navigate('bunker-plan');
+      showToast(next === 'own' ? 'Soundings entered in each tank\'s own method' : `Soundings now entered as ${next} — readings converted`);
+    };
+    document.getElementById('bp-distribute').onclick = () => {
+      const c = recomputePlan();
+      const res = Core.distributeToSequence(bundle(), {
+        mode: view.plan.distributionMode,
+        fuelType: c.header.fuelType,
+        quantityMT: c.header.bunkerQuantityMT,
+        density15: c.header.density15,
+        tempC: c.header.tempC,
+      }, view.conversion);
+      if (!res.sequence.length) {
+        showToast(res.warnings[0] || 'Nothing to distribute');
+        return;
+      }
+      const kept = view.plan.sequence.map((s) => s.currentSoundingMM);
+      view.plan.sequence = view.plan.sequence.map((slot, i) => (
+        res.sequence[i] ? { ...res.sequence[i], currentSoundingMM: kept[i] || '' }
+          : { tankId: '', targetVolumeM3: '', currentSoundingMM: '' }
+      ));
+      view.pendingPlan = fullPlan();
+      navigate('bunker-plan');
+      showToast(res.warnings.length ? res.warnings[0] : `Sequence filled — ${res.sequence.length} tank(s)`);
+    };
+
+    document.getElementById('bp-clock-toggle').onclick = () => {
+      /* The first touch of the day: let the browser allow the tone and the voice. */
+      if (typeof BunkerAlert !== 'undefined') BunkerAlert.prime();
+      const clock = Core.pumpingClock(view.plan, 0, null);
+      const nowIso = new Date().toISOString();
+      if (clock.completed) {
+        /* Reopen. The clock picks up exactly where it stopped: everything
+           between finishing and reopening goes to the paused total, or the
+           gap would be counted as time spent taking fuel and inflate the
+           expected intake. It reopens held, and the tanks stay shut until
+           somebody opens the ones that are taking fuel again. */
+        view.plan.elapsedPausedMs = (view.plan.elapsedPausedMs || 0)
+          + Math.max(0, Date.now() - Date.parse(view.plan.completedAt));
+        view.plan.completedAt = null;
+        view.plan.pausedAt = nowIso;
+        view.plan.status = 'pumping';
+      } else if (!clock.started) {
+        view.plan.startedAt = nowIso;
+        view.plan.pausedAt = null;
+        view.plan.elapsedPausedMs = 0;
+        view.plan.completedAt = null;
+        view.plan.status = 'pumping';
+      } else if (clock.paused) {
+        view.plan.elapsedPausedMs = (view.plan.elapsedPausedMs || 0)
+          + Math.max(0, Date.now() - Date.parse(view.plan.pausedAt));
+        view.plan.pausedAt = null;
+        resumeTanksPausedWithOperation(nowIso);
+      } else {
+        view.plan.pausedAt = nowIso;
+        pauseTanksWithOperation(nowIso);
+      }
+      refreshPlan();
+      startClockTicker();
+      persistPlanClock();
+    };
+    /* Pumping usually starts before anyone reaches the tablet, so the start can
+       be entered after the fact — from the barge's own log or the BDN — and the
+       elapsed time, the measured rate and the finishing time all follow it. */
+    document.getElementById('bp-start-at').onchange = (e) => {
+      const v = e.target.value;
+      if (!v) { view.plan.startedAt = null; view.plan.status = 'planning'; }
+      else {
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) return;
+        if (d.getTime() > Date.now() + 60000) {
+          showToast('Pump start is in the future — check the time');
+          return;
+        }
+        view.plan.startedAt = d.toISOString();
+        view.plan.pausedAt = null;
+        view.plan.status = 'pumping';
+      }
+      refreshPlan();
+      startClockTicker();
+      persistPlanClock();
+    };
+    const alertTest = document.getElementById('bp-alert-test');
+    if (alertTest) {
+      alertTest.onclick = () => {
+        if (typeof BunkerAlert === 'undefined') return;
+        const named = ((view.planComputed && view.planComputed.rows) || []).find((r) => r.tankId);
+        BunkerAlert.test(named ? named.name : undefined);
+      };
+    }
+    document.getElementById('bp-clock-reset').onclick = () => {
+      view.plan.startedAt = null;
+      view.plan.pausedAt = null;
+      view.plan.elapsedPausedMs = 0;
+      view.plan.completedAt = null;
+      view.plan.status = 'planning';
+      refreshPlan();
+      // A tank may still be taking fuel; its own clock keeps running, and the
+      // ticker retires itself if nothing is.
+      startClockTicker();
+      persistPlanClock();
+    };
+
+    /**
+     * Finish the transfer: shut every tank still open, stop the clock, and put
+     * the sheet in front of the delivery note.
+     *
+     * A tank that took fuel and was never sounded is called out before
+     * anything is closed. Closing it makes its intake unmeasurable — the level
+     * is still in the tank, but the reading that would have caught a short
+     * delivery is gone once the barge has cast off.
+     */
+    document.getElementById('bp-finish').onclick = () => {
+      const c = recomputePlan();
+      const open = c.rows.filter((r) => r.tankId && (r.status === 'filling' || r.status === 'paused'));
+      const short = c.reconciliation.tanksUnsounded;
+      const ask = short.length
+        ? `Finish bunkering? ${short.join(', ')} took fuel and ${short.length > 1 ? 'have' : 'has'}`
+          + ' no final sounding, so the received quantity will be short of the truth'
+          + ' and cannot be held against the delivery note.'
+        : `Finish bunkering? ${open.length} tank(s) will be closed and the pumping clock stopped.`;
+      if (!confirm(ask)) return;
+
+      const nowIso = new Date().toISOString();
+      for (const slot of view.plan.sequence) {
+        if (!slot.tankId || (slot.status !== 'filling' && slot.status !== 'paused')) continue;
+        if (slot.status === 'paused' && slot.pausedAt) {
+          slot.elapsedPausedMs = (slot.elapsedPausedMs || 0)
+            + Math.max(0, Date.now() - Date.parse(slot.pausedAt));
+        }
+        slot.pausedAt = null;
+        slot.pausedWithOperation = false;
+        slot.completedAt = nowIso;
+        slot.status = 'done';
+      }
+      if (view.plan.startedAt && view.plan.pausedAt) {
+        view.plan.elapsedPausedMs = (view.plan.elapsedPausedMs || 0)
+          + Math.max(0, Date.now() - Date.parse(view.plan.pausedAt));
+        view.plan.pausedAt = null;
+      }
+      view.plan.completedAt = nowIso;
+      view.plan.status = 'completed';
+      refreshPlan();
+      stopClockTicker();
+      persistPlanClock({ deferServer: false });
+
+      const panel = document.querySelector('.bp-finish');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const bdn = document.getElementById('bp-bdn');
+      if (bdn && !bdn.value) setTimeout(() => bdn.focus(), 400);
+    };
+
+    /* Carry the delivery-note quantity across to the paperwork, without
+       overwriting a figure already entered there. */
+    document.getElementById('bp-to-summary').onclick = () => {
+      /* Each line's delivery-note quantity goes to its own BDN on the summary. */
+      const full = fullPlan();
+      const current = Core.normalizeSummary(bundle(), bundle().bunkerSummary);
+      const next = { ...current };
+      const carried = [];
+      const hasQty = (q) => q !== '' && q != null;
+      const qtyA = full.header.bdnQuantityMT;
+      if (hasQty(qtyA) && !hasQty(current.bdn.quantityMT)) {
+        next.bdn = { ...current.bdn, quantityMT: qtyA, fuelType: full.header.fuelType || current.bdn.fuelType };
+        carried.push(`${qtyA} MT`);
+      } else if (hasQty(qtyA) && String(current.bdn.quantityMT) !== String(qtyA)) {
+        showToast(`Summary already has ${current.bdn.quantityMT} MT on the BDN — left as it is`);
+      }
+      if (full.distillate && hasQty(full.distillate.header.bdnQuantityMT)) {
+        const qtyB = full.distillate.header.bdnQuantityMT;
+        const cur2 = current.bdn2 || { fuelType: 'mdo', quantityMT: '', sulphurPercent: '', density15: '', number: '' };
+        if (!hasQty(cur2.quantityMT)) {
+          next.bdn2 = { ...cur2, quantityMT: qtyB, fuelType: full.distillate.header.fuelType || cur2.fuelType };
+          carried.push(`${qtyB} MT (distillate)`);
+        }
+      }
+      if (carried.length) {
+        view.pendingSummary = next;
+        showToast(`BDN quantity ${carried.join(' and ')} carried to the summary`);
+      }
+      navigate('bunker-summary');
+    };
+
+    document.getElementById('bp-blend-toggle').onclick = (e) => {
+      const box = document.getElementById('bp-blend');
+      box.hidden = !box.hidden;
+      e.target.textContent = box.hidden ? 'Show' : 'Hide';
+    };
+    document.getElementById('bp-mix-add').onclick = () => {
+      const tb = document.querySelector('#bp-mix-table tbody');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><input data-mix="label" value="Parcel"></td>
+        <td><input data-mix="density15" type="number" step="any"></td>
+        <td><input data-mix="quantityMT" type="number" step="any"></td>
+        <td><input data-mix="tempC" type="number" step="any" value="15"></td>`;
+      tb.appendChild(tr);
+    };
+    document.getElementById('bp-mix-calc').onclick = () => {
+      const parts = [];
+      document.querySelectorAll('#bp-mix-table tbody tr').forEach((tr) => {
+        const get = (k) => (tr.querySelector(`[data-mix="${k}"]`) || {}).value;
+        const dens = parseFloat(get('density15'));
+        const mt = parseFloat(get('quantityMT'));
+        if (!(dens > 0) || !(mt >= 0)) return;
+        parts.push({ label: get('label') || '', density15: dens, quantityMT: mt, tempC: parseFloat(get('tempC')) || 15 });
+      });
+      const res = Core.blendFuels(parts, 'wcf');
+      const box = document.getElementById('bp-mix-result');
+      if (!res || !res.blendedDensity15) {
+        box.innerHTML = '<div class="hint">Enter at least two parcels with a density and a quantity.</div>';
+        return;
+      }
+      box.innerHTML = `<div class="bs-quantities">
+          <div class="bp-monitor-box"><span>BLENDED DENSITY @15</span><b>${n(res.blendedDensity15, 4)}</b></div>
+          <div class="bp-monitor-box"><span>TOTAL QUANTITY</span><b>${n(res.totalMT, 3)} MT</b></div>
+          <div class="bp-monitor-box"><span>TOTAL VOL @15</span><b>${n(res.totalVol15, 2)} m³</b></div>
+        </div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn small" id="bp-mix-use-density">Use as plan density</button>
+          <button class="btn small" id="bp-mix-use-qty">Use total as bunker quantity</button>
+        </div>`;
+      document.getElementById('bp-mix-use-density').onclick = () => {
+        view.plan.header.density15 = res.blendedDensity15;
+        view.pendingPlan = fullPlan();
+        navigate('bunker-plan');
+        showToast('Blended density applied to the plan');
+      };
+      document.getElementById('bp-mix-use-qty').onclick = () => {
+        view.plan.header.bunkerQuantityMT = res.totalMT;
+        view.pendingPlan = fullPlan();
+        navigate('bunker-plan');
+        showToast('Total quantity applied to the plan');
+      };
+    };
+
+    document.getElementById('bp-fill-85').onclick = () => {
+      const c = recomputePlan();
+      for (const row of c.rows) {
+        if (!row.tankId) continue;
+        view.plan.sequence[row.slot - 1].targetVolumeM3 = row.capacity85M3;
+      }
+      view.pendingPlan = fullPlan();
+      navigate('bunker-plan');
+    };
+    document.getElementById('bp-clear-current').onclick = () => {
+      for (const slot of view.plan.sequence) slot.currentSoundingMM = '';
+      /* The page redraws from the pending plan; without this it reloads the stored
+         draft and the cleared soundings come straight back. */
+      view.pendingPlan = fullPlan();
+      navigate('bunker-plan');
+    };
+
+    bindHistory(wrap, 'plans', loadPlanEntry, fullPlan());
+  }
+
+  /* --------------------------------------------------------- plan print ---- */
+
+  function planPrintPagesSingle(c) {
+    const rows = c.rows.filter((r) => r.tankId).map((r) => `<tr>
+      <td class="fr-print-name">${r.slot}. ${esc(r.name)}</td>
+      <td>${n(r.capacity100M3, 1)}</td>
+      <td>${n(r.capacity85M3, 2)}</td>
+      <td>${n(FRCore.mmToCm(r.startingUllageMM), 1)}</td>
+      <td>${n(r.startingRobM3, 3)}</td>
+      <td>${n(r.freeM3At85, 3)}</td>
+      <td>${n(r.targetVolumeM3, 3)}</td>
+      <td>${pct(r.targetVolumePercent)}</td>
+      <td>${n(FRCore.mmToCm(r.targetUllageMM), 1)}</td>
+      <td>${n(r.planAddMT, 3)}</td>
+      <td>${r.manualGauge ? '—' : n(FRCore.mmToCm(r.currentSoundingMM), 1)}</td>
+      <td>${pct(r.currentVolumePercent)}</td>
+      <td>${n(r.currentVolumeM3, 3)}</td>
+      <td class="fr-print-weight">${n(r.quantityAddMT, 3)}</td>
+      <td>${esc((Core.TANK_STATES.find((s) => s.id === r.status) || {}).label || '')}</td>
+      <td>${esc(r.clock.elapsedLabel)}</td>
+    </tr>`).join('');
+
+    const t = c.totals;
+    const gradeLabel = (FRCore.FUEL_TYPES.find((f) => f.id === c.header.fuelType) || {}).label || '';
+
+    return `<section class="calib-print-page">
+      ${UI.masthead('BUNKERING PLAN & MONITORING', `${c.vessel.name} · ${c.header.port || ''}`)}
+      ${UI.metaGrid([
+        ['Vessel', c.vessel.name],
+        ['Voyage No.', c.header.voyageNo],
+        ['Date', c.header.date],
+        ['Port / place', c.header.port],
+        ['Grade', `${gradeLabel}${c.header.fuelGrade ? ` · ${c.header.fuelGrade}` : ''}`],
+        ['Bunker quantity', `${n(c.header.bunkerQuantityMT, 2, '—')} MT`],
+        ['Delivery rate', `${n(c.header.deliveryRateMTPerHour, 1, '—')} MT/h`],
+        ['Time to bunker', c.header.timeToBunkerLabel],
+        ['Draft fwd / aft', `${n(c.header.draftFwd, 2)} / ${n(c.header.draftAft, 2)} m`],
+        ['Mean draft', `${n(c.header.meanDraft, 2)} m`],
+        ['Trim / heel', `${n(c.header.trim, 2)} m · ${c.header.heel}°`],
+        ...(c.header.afterDraftsSet ? [['Expected after bunkering (fwd / aft · trim)', `${n(c.header.afterDraftFwd, 2)} / ${n(c.header.afterDraftAft, 2)} m · ${n(c.header.afterTrim, 2)} m — target soundings worked at this trim`]] : []),
+        ['Density @15 / temp', `${n(c.header.density15, 4, '—')} · ${n(c.header.tempC, 0)} °C`],
+      ])}
+      <h3 class="fr-print-h3">Loading sequence</h3>
+      <table class="fr-print-table">
+        <thead><tr>
+          <th>Seq / tank</th><th>Cap 100% m³</th><th>Cap 85% m³</th><th>Start ullage mm</th>
+          <th>Start ROB m³</th><th>Free m³ @85%</th><th>Target vol m³</th><th>Target %</th>
+          <th>Target ullage</th><th>Plan add MT</th><th>Current ${soundLabelPrint(c.header.soundingEntry)} mm</th><th>Current %</th>
+          <th>Current m³</th><th>Quantity add MT</th><th>Valve</th><th>Time open</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="16">No tanks in the sequence</td></tr>'}</tbody>
+        <tfoot><tr>
+          <th>TOTAL</th>
+          <td>${n(t.capacity100M3, 1)}</td><td>${n(t.capacity85M3, 2)}</td><td></td>
+          <td>${n(t.startingRobM3, 3)}</td><td>${n(t.freeM3At85, 3)}</td>
+          <td>${n(t.targetVolumeM3, 3)}</td><td></td><td></td><td>${n(t.plannedAddMT, 3)}</td>
+          <td></td><td></td><td>${n(t.currentVolumeM3, 3)}</td>
+          <td class="fr-print-weight">${n(t.receivedMT, 3)}</td>
+          <td></td><td></td>
+        </tr></tfoot>
+      </table>
+      <div class="fr-print-cols">
+        <div>
+          <h3 class="fr-print-h3">Monitoring</h3>
+          <table class="fr-print-table"><tbody>
+            <tr><td class="fr-print-name">Received</td><td>${n(c.monitoring.receivedMT, 3)} MT</td></tr>
+            <tr><td class="fr-print-name">Quantity remaining</td><td>${n(c.monitoring.quantityRemainingMT, 3, '—')} MT</td></tr>
+            <tr><td class="fr-print-name">Time remaining</td><td>${esc(c.monitoring.timeRemainingLabel)}</td></tr>
+            <tr><td class="fr-print-name">Complete</td><td>${n(c.monitoring.percentComplete, 1, '—')}%</td></tr>
+            <tr><td class="fr-print-name">Pumping time</td><td>${esc(c.monitoring.clock.elapsedLabel)}</td></tr>
+            <tr><td class="fr-print-name">Expected at rate</td>
+              <td>${n(c.monitoring.clock.expectedMT, 2, '—')} MT</td></tr>
+            <tr><td class="fr-print-name">Measured − expected</td>
+              <td>${c.monitoring.clock.varianceMT != null ? signed(c.monitoring.clock.varianceMT, 2) : '—'} MT</td></tr>
+          </tbody></table>
+        </div>
+        <div>
+          <h3 class="fr-print-h3">Capacity check</h3>
+          <table class="fr-print-table"><tbody>
+            <tr><td class="fr-print-name">Free space in sequence @85%</td><td>${n(t.freeM3At85, 3)} m³</td></tr>
+            <tr><td class="fr-print-name">Plan add vs bunker quantity</td>
+              <td>${signed(c.monitoring.planCoversQuantity, 2) || '—'} MT</td></tr>
+            <tr><td class="fr-print-name">Space shortfall for quantity</td>
+              <td>${c.monitoring.freeSpaceShortfallM3 != null ? signed(c.monitoring.freeSpaceShortfallM3, 2) : '—'} m³</td></tr>
+          </tbody></table>
+        </div>
+        <div>
+          <h3 class="fr-print-h3">Method</h3>
+          <table class="fr-print-table"><tbody>
+            <tr><td class="fr-print-name">Free @85%</td><td>85% capacity − starting ROB</td></tr>
+            <tr><td class="fr-print-name">Target ullage</td><td>calibration table read backwards from the target volume</td></tr>
+            <tr><td class="fr-print-name">Quantity add</td><td>(current volume − starting ROB) × VCF × WCF</td></tr>
+            <tr><td class="fr-print-name">Time</td><td>quantity ÷ delivery rate</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+      ${UI.printSignatureBlock()}
+      ${UI.footer(`${c.vessel.name} · bunkering plan · ${c.header.date || ''}`)}
+    </section>
+    ${planSequenceConditionPage(c)}`;
+  }
+
+  /** The loading table rows of one line, as printed. */
+  function planPrintRowsHtml(c) {
+    return c.rows.filter((r) => r.tankId).map((r) => `<tr>
+      <td class="fr-print-name">${r.slot}. ${esc(r.name)}</td>
+      <td>${n(r.capacity100M3, 1)}</td><td>${n(r.capacity85M3, 2)}</td>
+      <td>${n(FRCore.mmToCm(r.startingUllageMM), 1)}</td><td>${n(r.startingRobM3, 3)}</td>
+      <td>${n(r.freeM3At85, 3)}</td><td>${n(r.targetVolumeM3, 3)}</td><td>${pct(r.targetVolumePercent)}</td>
+      <td>${n(FRCore.mmToCm(r.targetUllageMM), 1)}</td><td>${n(r.planAddMT, 3)}</td>
+      <td>${r.manualGauge ? '—' : n(FRCore.mmToCm(r.currentSoundingMM), 1)}</td><td>${pct(r.currentVolumePercent)}</td>
+      <td>${n(r.currentVolumeM3, 3)}</td><td class="fr-print-weight">${n(r.quantityAddMT, 3)}</td>
+      <td>${esc((Core.TANK_STATES.find((st) => st.id === r.status) || {}).label || '')}</td>
+      <td>${esc(r.clock.elapsedLabel)}</td>
+    </tr>`).join('');
+  }
+
+  /** One fuel line of the combined sheet: its particulars, then its loading sequence. */
+  function planPrintLineBlock(c, which) {
+    const t = c.totals;
+    const grade = (FRCore.FUEL_TYPES.find((f) => f.id === c.header.fuelType) || {}).label || '';
+    const title = which === 'A' ? 'Line 1 — residual (first hose)' : 'Line 2 — distillate (second hose)';
+    return `<h3 class="fr-print-h3">${esc(title)}: ${esc(grade)}${c.header.fuelGrade ? ` · ${esc(c.header.fuelGrade)}` : ''}</h3>
+      ${UI.metaGrid([
+        ['Bunker quantity', `${n(c.header.bunkerQuantityMT, 2, '—')} MT`],
+        ['Delivery rate', `${n(c.header.deliveryRateMTPerHour, 1, '—')} MT/h`],
+        ['Time to bunker', c.header.timeToBunkerLabel],
+        ['Density @15 / temp', `${n(c.header.density15, 4, '—')} · ${n(c.header.tempC, 0)} °C`],
+        ['Received', `${n(c.monitoring.receivedMT, 3)} MT`],
+        ['Pumping time', c.monitoring.clock.elapsedLabel],
+      ])}
+      <table class="fr-print-table">
+        <thead><tr>
+          <th>Seq / tank</th><th>Cap 100% m³</th><th>Cap 85% m³</th><th>Start ullage mm</th>
+          <th>Start ROB m³</th><th>Free m³ @85%</th><th>Target vol m³</th><th>Target %</th>
+          <th>Target ullage</th><th>Plan add MT</th><th>Current ${soundLabelPrint(c.header.soundingEntry)} mm</th><th>Current %</th>
+          <th>Current m³</th><th>Quantity add MT</th><th>Valve</th><th>Time open</th>
+        </tr></thead>
+        <tbody>${planPrintRowsHtml(c) || '<tr><td colspan="16">No tanks in the sequence</td></tr>'}</tbody>
+        <tfoot><tr>
+          <th>TOTAL</th>
+          <td>${n(t.capacity100M3, 1)}</td><td>${n(t.capacity85M3, 2)}</td><td></td>
+          <td>${n(t.startingRobM3, 3)}</td><td>${n(t.freeM3At85, 3)}</td>
+          <td>${n(t.targetVolumeM3, 3)}</td><td></td><td></td><td>${n(t.plannedAddMT, 3)}</td>
+          <td></td><td></td><td>${n(t.currentVolumeM3, 3)}</td>
+          <td class="fr-print-weight">${n(t.receivedMT, 3)}</td><td></td><td></td>
+        </tr></tfoot>
+      </table>`;
+  }
+
+  /** One sheet for a delivery taken through two hoses: both lines, then the whole delivery. */
+  function planPrintPagesCombined(plans) {
+    const { a, b, combined: cb } = plans;
+    const warn = cb.warnings.length
+      ? `<p class="calib-print-note">${cb.warnings.map((w) => esc(w.text)).join(' ')}</p>` : '';
+    return `<section class="calib-print-page bp-print-combined">
+      ${UI.masthead('BUNKERING PLAN & MONITORING — TWO LINES', `${a.vessel.name} · ${a.header.port || ''}`)}
+      ${UI.metaGrid([
+        ['Vessel', a.vessel.name],
+        ['Voyage No.', a.header.voyageNo],
+        ['Date', a.header.date],
+        ['Port / place', a.header.port],
+        ['Total quantity', `${n(cb.quantityMT, 2, '—')} MT`],
+        ['Both lines together', `${n(cb.rateMTPerHour, 1, '—')} MT/h`],
+        ['Finish (later line)', cb.timeToBunkerLabel],
+        ['Draft fwd / aft', `${n(a.header.draftFwd, 2)} / ${n(a.header.draftAft, 2)} m`],
+        ['Trim / heel', `${n(a.header.trim, 2)} m · ${a.header.heel}°`],
+        ...(a.header.afterDraftsSet ? [['Expected after bunkering (fwd / aft · trim)', `${n(a.header.afterDraftFwd, 2)} / ${n(a.header.afterDraftAft, 2)} m · ${n(a.header.afterTrim, 2)} m`]] : []),
+      ])}
+      ${planPrintLineBlock(a, 'A')}
+      ${planPrintLineBlock(b, 'B')}
+      <h3 class="fr-print-h3">Whole delivery</h3>
+      <table class="fr-print-table"><tbody>
+        <tr><td class="fr-print-name">Ordered</td><td>${n(cb.quantityMT, 3, '—')} MT</td>
+          <td class="fr-print-name">Planned to add</td><td>${n(cb.plannedAddMT, 3, '—')} MT</td></tr>
+        <tr><td class="fr-print-name">Received</td><td>${n(cb.receivedMT, 3, '—')} MT</td>
+          <td class="fr-print-name">Remaining</td><td>${n(cb.quantityRemainingMT, 3, '—')} MT</td></tr>
+        <tr><td class="fr-print-name">Rate, both hoses</td><td>${n(cb.rateMTPerHour, 1, '—')} MT/h</td>
+          <td class="fr-print-name">Time remaining</td><td>${esc(cb.timeRemainingLabel)}</td></tr>
+      </tbody></table>
+      ${warn}
+      ${UI.printSignatureBlock()}
+      ${UI.footer(`${a.vessel.name} · bunkering plan, two lines · ${a.header.date || ''}`)}
+    </section>
+    ${planSequenceConditionPage(a, b)}`;
+  }
+
+  /** A single computed plan (older callers) or the two-line result of computeBunkerPlans. */
+  function planPrintPages(plans) {
+    if (plans && plans.a === undefined) return planPrintPagesSingle(plans);
+    if (!plans.b) return planPrintPagesSingle(plans.a);
+    return planPrintPagesCombined(plans);
+  }
+
+  /**
+   * One print page: before + after condition for sequence tanks only, with a
+   * single stamp / signature. Full-vessel sheets stay on Monitoring / After
+   * Bunkering. Plan print is therefore two pages total.
+   */
+  function planSequenceConditionPage(c, c2) {
+    const tankIds = Core.sequenceTankIds(c.form || view.plan).concat(
+      c2 ? Core.sequenceTankIds(c2.form).filter((id) => !Core.sequenceTankIds(c.form || view.plan).includes(id)) : []);
+    const opts = (c.before && c.before.options) || {};
+
+    const beforeReport = Core.filterReportToTankIds(c.before, tankIds);
+    const beforeBody = beforeReport && beforeReport.sections && beforeReport.sections.length
+      ? beforeReport.sections.map((s) => UI.printSectionTable(s, beforeReport.options || opts)).join('')
+      : `<p class="calib-print-note">${esc(tankIds.length
+        ? 'No sequence tanks with soundings on the fuel report.'
+        : 'No tanks in the bunkering sequence.')}</p>`;
+
+    let afterBody;
+    if (!bundle().bunkerAfter) {
+      afterBody = '<p class="calib-print-note">After bunkering not recorded yet — complete After Bunkering to print sequence-tank condition.</p>';
+    } else {
+      const afterReport = Core.filterReportToTankIds(
+        Core.computeAfterBunkering(bundle(), bundle().bunkerAfter, view.conversion),
+        tankIds,
+      );
+      afterBody = afterReport && afterReport.sections && afterReport.sections.length
+        ? afterReport.sections.map((s) => UI.printSectionTable(s, afterReport.options || opts)).join('')
+        : `<p class="calib-print-note">${esc(tankIds.length
+          ? 'No after-bunkering soundings for the tanks in this sequence.'
+          : 'No tanks in the bunkering sequence.')}</p>`;
+    }
+
+    return `<section class="calib-print-page">
+      ${UI.masthead('SEQUENCE TANKS — BEFORE & AFTER BUNKERING', `${c.vessel.name} · ${c.header.date || ''}`)}
+      <p class="calib-print-note">Tanks in the bunkering sequence only (tank-basis received). Full vessel
+        soundings remain on Monitoring and the After Bunkering report.</p>
+      <h3 class="fr-print-h3">Before bunkering</h3>
+      ${beforeBody}
+      <h3 class="fr-print-h3">After bunkering</h3>
+      ${afterBody}
+      ${planChangePrintTable(c, c2 ? 'Tank change vs BDN — residual line' : null)}
+      ${c2 ? planChangePrintTable(c2, 'Tank change vs BDN — distillate line') : ''}
+      ${UI.printSignatureBlock()}
+      ${UI.footer(`${c.vessel.name} · sequence tanks · before &amp; after bunkering`)}
+    </section>`;
+  }
+
+  /** Totals under the after table: previous / calculated / received vs BDN. */
+  function planChangePrintTable(c, title) {
+    // Prefer before/after condition reports on this page when after is saved —
+    // that is the same sheet the tables above come from.
+    const ch = sequenceChangeFromReports(c) || c.tankChange || {};
+    const densNote = ch.density15 != null
+      ? `Density @15 ${n(ch.density15, 4)} · ${n(ch.tempC, 0)} °C`
+      : 'Density not entered — MT from volume not converted';
+    return `
+      <h3 class="fr-print-h3">${esc(title || 'Tank change vs BDN')}</h3>
+      <p class="calib-print-note">${esc(densNote)}. Sequence tanks only.</p>
+      <table class="fr-print-table bp-change-print">
+        <thead><tr>
+          <th></th>
+          <th>Previous volume</th>
+          <th>Calculated volume</th>
+          <th>Volume received</th>
+          <th>BDN (note)</th>
+          <th>Actual − BDN</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <th class="fr-print-name">m³</th>
+            <td>${n(ch.previousVolumeM3, 3, '—')}</td>
+            <td>${n(ch.calculatedVolumeM3, 3, '—')}</td>
+            <td>${n(ch.receivedVolumeM3, 3, '—')}</td>
+            <td>${n(ch.bdnVolumeM3, 3, '—')}</td>
+            <td>${ch.differenceM3 != null ? signed(ch.differenceM3, 3) : '—'}</td>
+          </tr>
+          <tr>
+            <th class="fr-print-name">MT</th>
+            <td>${n(ch.previousMT, 3, '—')}</td>
+            <td>${n(ch.calculatedMT, 3, '—')}</td>
+            <td>${n(ch.receivedMT, 3, '—')}</td>
+            <td>${n(ch.bdnQuantityMT, 3, '—')}</td>
+            <td>${ch.differenceMT != null ? signed(ch.differenceMT, 3) : '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+      ${ch.differencePercent != null
+        ? `<p class="calib-print-note">Difference ${signed(ch.differencePercent, 2)}% of BDN
+            ${ch.tanksCompared ? ` · ${ch.tanksCompared} sounded sequence tank(s)` : ''}.</p>`
+        : ''}`;
+  }
+
+  /**
+   * Previous / after volumes from the condition reports on print page 2,
+   * converted at the plan density so MT matches the BDN comparison.
+   */
+  function sequenceChangeFromReports(c) {
+    if (!bundle().bunkerAfter) return null;
+    const tankIds = Core.sequenceTankIds(c.form || view.plan);
+    if (!tankIds.length) return null;
+    const density15 = c.header && c.header.density15 != null
+      ? Number(c.header.density15)
+      : (c.tankChange && c.tankChange.density15);
+    const tempC = (c.header && c.header.tempC != null ? Number(c.header.tempC) : null)
+      || (c.tankChange && c.tankChange.tempC) || 15;
+    const before = Core.filterReportToTankIds(c.before, tankIds);
+    const after = Core.filterReportToTankIds(
+      Core.computeAfterBunkering(bundle(), bundle().bunkerAfter, view.conversion),
+      tankIds,
+    );
+    const sumVol = (report) => {
+      let total = 0;
+      let count = 0;
+      for (const section of (report && report.sections) || []) {
+        for (const row of section.rows || []) {
+          if (row.measuredM3 == null) continue;
+          total += Number(row.measuredM3) || 0;
+          count += 1;
+        }
+      }
+      return count ? total : null;
+    };
+    const sumMT = (report) => {
+      let total = 0;
+      let count = 0;
+      for (const section of (report && report.sections) || []) {
+        for (const row of section.rows || []) {
+          if (row.weightAirMT == null) continue;
+          total += Number(row.weightAirMT) || 0;
+          count += 1;
+        }
+      }
+      return count ? total : null;
+    };
+    const previousVolumeM3 = sumVol(before);
+    const calculatedVolumeM3 = sumVol(after);
+    const receivedVolumeM3 = previousVolumeM3 != null && calculatedVolumeM3 != null
+      ? calculatedVolumeM3 - previousVolumeM3
+      : null;
+    const previousMT = density15 != null && previousVolumeM3 != null
+      ? Core.mtFromVolume(previousVolumeM3, density15, tempC)
+      : sumMT(before);
+    const calculatedMT = density15 != null && calculatedVolumeM3 != null
+      ? Core.mtFromVolume(calculatedVolumeM3, density15, tempC)
+      : sumMT(after);
+    const receivedMT = density15 != null && receivedVolumeM3 != null
+      ? Core.mtFromVolume(receivedVolumeM3, density15, tempC)
+      : (previousMT != null && calculatedMT != null ? calculatedMT - previousMT : null);
+    const bdnQuantityMT = c.header && c.header.bdnQuantityMT != null && c.header.bdnQuantityMT !== ''
+      ? Number(c.header.bdnQuantityMT)
+      : (c.tankChange && c.tankChange.bdnQuantityMT);
+    const bdnVolumeM3 = bdnQuantityMT != null && density15 != null
+      ? Core.volumeFromMT(bdnQuantityMT, density15, tempC)
+      : null;
+    const differenceMT = bdnQuantityMT != null && receivedMT != null ? receivedMT - bdnQuantityMT : null;
+    const differenceM3 = bdnVolumeM3 != null && receivedVolumeM3 != null
+      ? receivedVolumeM3 - bdnVolumeM3
+      : null;
+    const differencePercent = bdnQuantityMT != null && bdnQuantityMT !== 0 && receivedMT != null
+      ? ((receivedMT - bdnQuantityMT) / bdnQuantityMT) * 100
+      : null;
+    return {
+      previousVolumeM3,
+      calculatedVolumeM3,
+      receivedVolumeM3,
+      previousMT,
+      calculatedMT,
+      receivedMT,
+      density15,
+      tempC,
+      bdnQuantityMT,
+      bdnVolumeM3,
+      differenceMT,
+      differenceM3,
+      differencePercent,
+      tanksCompared: tankIds.length,
+    };
+  }
+
+  /* ====================================================== after bunkering ==== */
+
+  function recomputeAfter() {
+    view.computed = Core.computeAfterBunkering(bundle(), view.after, view.conversion);
+    return view.computed;
+  }
+
+  async function renderAfter(main) {
+    view.page = 'bunker-after';
+    await loadConversion();
+    const b = bundle();
+    if (!view.pendingAfter) {
+      const back = recoverDraft('bunker-after', b.bunkerAfter);
+      if (back) { view.pendingAfter = back; showToast('Your unsaved After Bunkering draft was restored'); }
+    }
+    const afterFromPending = !!view.pendingAfter;
+    view.after = Core.normalizeAfterReport(b, view.pendingAfter || b.bunkerAfter, view.conversion);
+    view.pendingAfter = null;
+    const c = recomputeAfter();
+
+    main.innerHTML += `${UI.bunkerNavHtml('bunker-after')}<div class="page-head no-print">
+      <div><h1>Tank Monitoring After Bunkering</h1>
+        <div class="desc">Re-sound every tank; intake per grade is the difference against the ROB prior to bunkering</div></div>
+      <div class="btn-row">
+        <button class="btn" id="ba-get-data">GET DATA</button>
+        <button class="btn primary" id="ba-print-save">PRINT &amp; SAVE</button>
+        <button class="btn" id="ba-save">Save only</button>
+        <button class="btn" id="ba-print-only">Print only</button>
+        ${mainMenuButton('ba-menu')}
+      </div></div>`;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'fuel-report-page';
+    wrap.innerHTML = `
+      ${afterHeaderPanel()}
+      ${c.sections.map((s) => UI.sheetTableHtml(s, view.after.rows)).join('')}
+      ${afterGradesPanel(c)}
+      <div class="form-panel no-print" id="ba-blend-panel" hidden></div>
+      <div class="form-panel no-print">
+        <details class="saved-reports-fold">
+          <summary class="section-title" style="margin-top:0; cursor:pointer;">Saved after-bunkering reports</summary>
+          <p class="hint" style="margin-top:8px;">Drafts stay here for editing. Filed reports can be reprinted or loaded back into the form.</p>
+          ${historyRows(bunkerHistory().after, 'after', view.after && view.after.updatedAt ? {
+            form: view.after,
+            voyageNo: view.after.header && view.after.header.voyageNo,
+            port: view.after.header && view.after.header.port,
+            savedAt: view.after.updatedAt,
+          } : null)}
+        </details>
+      </div>`;
+    main.appendChild(wrap);
+
+    bindAfterEvents(wrap);
+    bindBlendPanel();
+    UI.bindBunkerNav(main);
+    hookDraft(wrap, 'bunker-after');
+    refreshAfter();
+    if (afterFromPending) scheduleDraft('bunker-after');
+    if (window.TankCardCapture) TankCardCapture.addButton('.page-head .btn-row', 'ba-capture', 'after', bundle);
+  }
+
+  function afterHeaderPanel() {
+    const h = view.after.header;
+    const types = FRCore.REPORT_TYPES.map((t) =>
+      `<option value="${esc(t)}" ${h.reportType === t ? 'selected' : ''}>${esc(t)}</option>`).join('');
+    const heelVal = h.heel === '' || h.heel == null ? 0 : h.heel;
+    return `<div class="form-panel fr-header no-print">
+      <div class="fr-header-grid">
+        <label class="fr-field"><span>VOYAGE</span>
+          <input data-head="voyageNo" value="${esc(h.voyageNo)}"></label>
+        <label class="fr-field"><span>REPORT</span>
+          <select data-head="reportType">${types}</select></label>
+        <label class="fr-field"><span>DRAFT FWD</span>
+          <input type="number" step="any" data-head="draftFwd" value="${esc(h.draftFwd)}"></label>
+        <label class="fr-field"><span>DRAFT AFT</span>
+          <input type="number" step="any" data-head="draftAft" value="${esc(h.draftAft)}"></label>
+        <label class="fr-field"><span>MEAN DRAFT</span>
+          <output class="fr-out" data-ba-head="meanDraft"></output></label>
+        <label class="fr-field"><span>TRIM</span>
+          <output class="fr-out" data-ba-head="trim"></output></label>
+        <div class="fr-field-triple">
+          <label class="fr-field"><span>HEEL (°)</span>
+            <input type="number" step="any" data-head="heel" data-signed="1" value="${esc(heelVal)}" title="Negative = port · positive = starboard"></label>
+          <label class="fr-field"><span>SW TEMP.</span>
+            <input type="number" step="any" data-head="seaTemp" value="${esc(h.seaTemp)}"></label>
+          <label class="fr-field"><span>ER TEMP.</span>
+            <input type="number" step="any" data-head="engineRoomTemp" value="${esc(h.engineRoomTemp)}"></label>
+        </div>
+
+        <label class="fr-field"><span>DATE</span>
+          <input type="date" data-head="date" value="${esc(h.date)}"></label>
+        <label class="fr-field"><span>TIME</span>
+          <input type="time" data-head="time" value="${esc(h.time)}"></label>
+        <label class="fr-field fr-field-wide"><span>PORT</span>
+          <input data-head="port" value="${esc(h.port)}"></label>
+      </div>
+      <div class="hint">Heel: <b>negative</b> = port, <b>positive</b> = starboard (decimals OK). Default 0.</div>
+      <div class="hint"><b>Drafts:</b> loading a large quantity trims the ship, so type the drafts read off the marks now, after bunkering — trim and every tank's volume follow them. They start from the drafts the plan expected, if it had any.</div>
+      <div class="hint" data-ba-head="attitude"></div>
+    </div>`;
+  }
+
+  function afterGradesPanel(c) {
+    const cells = c.grades.map((g) => `
+      <div class="fr-grade" data-grade="${g.id}">
+        <div class="fr-grade-label">${esc(g.label)}</div>
+        <label class="fr-field"><span>ROB PRIOR BUNKERING (MT)</span>
+          <input type="number" step="any" data-prior="${g.id}" value="${esc(view.after.priorRob[g.id])}"></label>
+        <div class="fr-grade-row"><span>TOTAL ADDED (MT)</span><b data-ba-grade="${g.id}.addedMT"></b></div>
+        <div class="fr-grade-row"><span>TOTAL PRESENT (MT)</span><b data-ba-grade="${g.id}.presentMT"></b></div>
+      </div>`).join('');
+    return `<div class="form-panel no-print">
+      <div class="section-title" style="margin-top:0">
+        <span>ROB prior bunkering → total added → present</span>
+        <button type="button" class="btn small" id="ba-fill-prior-rob">Get current ROB</button>
+      </div>
+      <div class="fr-grades">${cells}</div>
+      <p class="hint"><b>Get current ROB</b> fills prior ROB from the monitoring page weight by air (MT)
+        for each fuel type. <b>GET DATA</b> (header) can also refresh soundings from the fuel report.
+        A negative "added" is consumption, not intake.</p>
+    </div>`;
+  }
+
+  /**
+   * Fill ROB PRIOR BUNKERING from the Fuel Oil Report weight-by-air totals
+   * (monitoring TOTAL ACTUAL / grade.actualMT). Does not touch soundings or lubes.
+   */
+  async function fillPriorRobFromMonitoring() {
+    try { if (window.FuelReport && FuelReport.flushIfDirty) await FuelReport.flushIfDirty(); } catch (_) { /* offline */ }
+    const prior = Core.priorRobFromFuelReport(bundle(), view.conversion);
+    let filled = 0;
+    for (const grade of FRCore.FUEL_TYPES) {
+      const mt = prior[grade.id];
+      if (mt == null || !Number.isFinite(Number(mt))) continue;
+      const val = n(mt, 3);
+      view.after.priorRob[grade.id] = val;
+      const input = document.querySelector(`[data-prior="${grade.id}"]`);
+      if (input) input.value = val;
+      filled += 1;
+    }
+    refreshAfter();
+    showToast(filled
+      ? `Prior ROB filled from monitoring (${filled} fuel type${filled === 1 ? '' : 's'})`
+      : 'No monitoring weight-by-air figures yet — enter soundings on the fuel report first');
+  }
+
+  function refreshAfter() {
+    const c = recomputeAfter();
+    const set = UI.setCell;
+    set('[data-ba-head="meanDraft"]', n(c.header.meanDraft, 2));
+    set('[data-ba-head="trim"]', n(c.header.trim, 2));
+    set('[data-ba-head="attitude"]',
+      `Trim ${c.header.trimLabel} · heel ${c.header.heelLabel} — tables read at trim `
+      + `${signed(c.header.trim, 2)} m ${FRCore.trimSense(c.header.trim)}.`);
+    UI.paintSectionCells(c.sections);
+    paintBlendPreview(c);
+    for (const g of c.grades) {
+      set(`[data-ba-grade="${g.id}.addedMT"]`, g.addedMT != null ? `${signed(g.addedMT, 3)}` : '—');
+      set(`[data-ba-grade="${g.id}.presentMT"]`, n(g.presentMT, 3, '—'));
+      const box = document.querySelector(`.fr-grade[data-grade="${g.id}"]`);
+      if (box) {
+        box.classList.toggle('fr-grade-empty', !g.tanks);
+        box.classList.toggle('fr-grade-good', g.addedMT != null && g.addedMT > 0.001);
+      }
+    }
+  }
+
+  /**
+   * What each tank that took fuel now holds: the old content blended with the delivery, using the delivery notes
+   * on the Summary page. Shown so the figures can be checked before they are filed.
+   */
+  function paintBlendPreview(c) {
+    const host = document.getElementById('ba-blend-panel');
+    if (!host) return;
+    if (typeof TankFuelRegister === 'undefined') { host.hidden = true; return; }
+    let prev = null;
+    try {
+      const summary = (document.getElementById('bs-save') && view.summary) ? view.summary : (bundle().bunkerSummary || {});
+      prev = TankFuelRegister.previewBunkering(bundle(), Core.tankLoadsFromAfter(c), summary);
+    } catch (err) { console.warn('blend preview', err); }
+    const rows = prev ? prev.tanks.filter((t) => t.gained) : [];
+    if (!rows.length) { host.hidden = true; host.innerHTML = ''; return; }
+    host.hidden = false;
+    /* Typing in a box repaints this panel; keep the cursor where it was. */
+    const active = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.pf
+      ? { key: document.activeElement.dataset.pf, at: document.activeElement.selectionStart } : null;
+    const f = (v, d) => (v == null ? '—' : n(v, d));
+    const figures = view.after.priorFigures || {};
+    const box = (tankId, field, ph, w) => `<input class="bp-pf" data-pf="${esc(tankId)}.${field}" placeholder="${ph}" style="width:${w}"`
+      + ` value="${esc((figures[tankId] || {})[field] == null ? '' : figures[tankId][field])}">`;
+    host.innerHTML = `<div class="section-title" style="margin-top:0"><span>What each tank holds after this bunkering</span></div>
+      <div class="table-scroll"><table class="fr-table"><thead><tr><th>Tank</th><th>Before (MT)</th><th>Loaded (MT)</th><th>After (MT)</th><th>S (%)</th><th>LCV (kJ/kg)</th><th>ρ @15</th><th>BDN</th><th>Fuel already in the tank</th></tr></thead><tbody>${
+        rows.map((t) => {
+          const typed = t.lots.length && t.lots[0].typed;
+          const wantsFigures = t.priorUnknown || typed;
+          return `<tr><td>${esc(t.tankName || t.tankId)}</td><td>${f(t.beforeMt, 1)}${t.estimatedBefore ? ' est.' : ''}</td><td>${f(t.loadedMt, 1)}</td><td>${f(t.afterMt, 1)}</td>
+          <td>${f(t.result.sulphur, 3)}</td><td>${f(t.result.lcv, 0)}</td><td>${f(t.result.density, 3)}</td>
+          <td>${esc(t.lots.map((l) => (l.numbers || []).join('/')).filter(Boolean).join(' + '))}${t.lots.length > 1 ? ' <i>(blend)</i>' : ''}</td>
+          <td>${wantsFigures
+            ? `${box(t.tankId, 'bdn', 'BDN', '5.5em')} ${box(t.tankId, 'sulphur', 'S %', '4em')} ${box(t.tankId, 'lcv', 'LCV kJ/kg', '5.5em')} ${box(t.tankId, 'density', 'ρ', '4em')}`
+              + (t.priorUnknown ? '<div class="hint">The fuel already in this tank has no figures on record — type them to get the blend.</div>' : '')
+            : '<span class="hint">on record</span>'}</td></tr>`;
+        }).join('')
+      }</tbody></table></div>
+      <p class="hint">A tank bunkered empty takes the delivery note as it is; a tank that already held fuel is the mass-weighted blend of the old content and the delivery (density by volume).
+        ${prev.hasBdn ? '' : '<b>Enter the delivery notes (sulphur, LCV) on the Summary page to fill the figures.</b>'}
+        ${(prev.notes || []).map((x) => esc(x)).join(' ')}</p>`;
+    if (active) {
+      const el = host.querySelector(`[data-pf="${active.key}"]`);
+      if (el) { el.focus(); try { el.setSelectionRange(active.at, active.at); } catch (_) { /* number-less input */ } }
+    }
+  }
+
+  /** Figures typed for fuel already in a tank are kept with the after-bunkering report. */
+  function bindBlendPanel() {
+    const host = document.getElementById('ba-blend-panel');
+    if (!host || host.dataset.bound) return;
+    host.dataset.bound = '1';
+    host.addEventListener('input', (e) => {
+      const key = e.target.dataset && e.target.dataset.pf;
+      if (!key) return;
+      const [tankId, field] = key.split('.');
+      view.after.priorFigures = view.after.priorFigures || {};
+      view.after.priorFigures[tankId] = { ...(view.after.priorFigures[tankId] || {}), [field]: e.target.value };
+      scheduleDraft('bunker-after');
+      paintBlendPreview(recomputeAfter());
+    });
+  }
+
+  function bindAfterEvents(wrap) {
+    UI.bindSectionMove(wrap, view.after.rows, () => {
+      view.pendingAfter = view.after;
+      navigate('bunker-after');
+    });
+    if (typeof UI.bindSheetPopups === 'function') {
+      UI.bindSheetPopups(
+        wrap,
+        () => view.after.rows,
+        () => view.computed || recomputeAfter(),
+        () => { refreshAfter(); },
+      );
+    }
+    wrap.addEventListener('input', (e) => {
+      const el = e.target;
+      if (el.dataset.row && el.dataset.field) {
+        const row = view.after.rows[el.dataset.row];
+        if (!row) return;
+        const moves = el.dataset.field === 'fuelType'
+          && UI.sectionWouldChange(view.computed, row, el.dataset.row, el.value);
+        if (el.dataset.field === 'reading') {
+          row.reading = FRCore.cmToMm(el.value);
+          row.unit = 'den15';
+        } else if (el.dataset.field === 'unitValue') {
+          row.unitValue = el.value;
+          row.unit = 'den15';
+        } else {
+          row[el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value;
+        }
+        if (moves) {
+          view.pendingAfter = view.after;
+          navigate('bunker-after');
+          showToast(`Moved to the ${UI.SECTION_SHORT[FRCore.sectionForFuelType(el.value)]} table`);
+          return;
+        }
+      } else if (el.dataset.head) {
+        view.after.header[el.dataset.head] = el.value;
+      } else if (el.dataset.prior) {
+        view.after.priorRob[el.dataset.prior] = el.value;
+      } else {
+        return;
+      }
+      refreshAfter();
+    });
+
+    document.getElementById('ba-get-data').onclick = async () => {
+      /* Soundings typed or loaded on Tank Monitoring but not saved yet are the current monitoring. */
+      try { if (window.FuelReport && FuelReport.flushIfDirty) await FuelReport.flushIfDirty(); } catch (_) { /* offline */ }
+      const keep = confirm('Keep the soundings already entered here?\n\n'
+        + 'OK — refresh only the ROB prior bunkering.\n'
+        + 'Cancel — reload soundings from the fuel report as well.');
+      try {
+        const res = await Api.request(`/api/vessels/${STATE.activeVesselId}/bunker-after/get-data`,
+          { method: 'POST', body: { keepSoundings: keep } });
+        view.pendingAfter = res.form;
+      } catch {
+        // Offline: recompute the same thing locally.
+        const base = Core.emptyAfterReport(bundle(), view.conversion);
+        view.pendingAfter = keep ? { ...view.after, priorRob: base.priorRob } : base;
+      }
+      navigate('bunker-after');
+      showToast('Data pulled from the fuel report');
+    };
+    document.getElementById('ba-fill-prior-rob')?.addEventListener('click', () => {
+      fillPriorRobFromMonitoring();
+    });
+    document.getElementById('ba-print-save').onclick = async () => {
+      Branding.beginPrintHold();
+      try {
+        await saveChainPart('bunker-after', 'bunkerAfter',
+          { ...view.after, updatedAt: new Date().toISOString() }, { snapshot: true, deferServer: true });
+        UI.printHtml(afterPrintPages(recomputeAfter()));
+      } catch (err) {
+        Branding.endPrintHold();
+        throw err;
+      }
+    };
+    document.getElementById('ba-save').onclick = () => saveChainPart('bunker-after', 'bunkerAfter',
+      { ...view.after, updatedAt: new Date().toISOString() }, { snapshot: true });
+    document.getElementById('ba-print-only').onclick = () =>
+      UI.printHtml(afterPrintPages(recomputeAfter()));
+    const baMenu = document.getElementById('ba-menu');
+    if (baMenu) baMenu.onclick = () => navigate('dashboard');
+
+    bindHistory(wrap, 'after', (entry) => {
+      view.pendingAfter = entry.form;
+      navigate('bunker-after');
+      showToast(entry.isDraft || entry.id === '__draft__' ? 'Draft loaded for editing' : 'After-bunkering report loaded');
+    }, view.after);
+  }
+
+  function afterPrintPages(c) {
+    const gradeRows = c.grades.filter((g) => g.tanks > 0 || g.priorMT != null).map((g) => `<tr>
+      <td class="fr-print-name">${esc(g.label)}</td>
+      <td>${n(g.priorMT, 3, '—')}</td>
+      <td class="fr-print-weight">${signed(g.addedMT, 3) || '—'}</td>
+      <td>${n(g.presentMT, 3, '—')}</td>
+    </tr>`).join('');
+    const gradeGroupRows = (FRCore.SECTIONS || []).map((sec) => {
+      const members = (c.grades || []).filter((g) => (sec.grades || []).includes(g.id)
+        && (g.tanks > 0 || g.priorMT != null || g.presentMT != null || g.addedMT != null));
+      if (!members.length) return '';
+      const prior = members.reduce((s, g) => s + (Number(g.priorMT) || 0), 0);
+      const added = members.reduce((s, g) => s + (Number(g.addedMT) || 0), 0);
+      const present = members.reduce((s, g) => s + (Number(g.presentMT) || 0), 0);
+      const anyPrior = members.some((g) => g.priorMT != null);
+      const anyAdded = members.some((g) => g.addedMT != null);
+      const anyPresent = members.some((g) => g.presentMT != null);
+      return `<tr>
+        <th class="fr-print-name">${esc(sec.totalLabel || sec.shortLabel || sec.title)}</th>
+        <td><b>${anyPrior ? n(prior, 3) : '—'}</b></td>
+        <td class="fr-print-weight"><b>${anyAdded ? signed(added, 3) : '—'}</b></td>
+        <td><b>${anyPresent ? n(present, 3) : '—'}</b></td>
+      </tr>`;
+    }).join('');
+
+    /* Same face as Tank Condition: masthead facts put Mean Draft under the
+       draft pair, and HFO/VLSFO vs MO/MGO/LSMGO each get their own table. */
+    return `<section class="calib-print-page fr-tc-page">
+      ${UI.printMasthead(c, { title: 'TANK CONDITION AFTER BUNKERING' })}
+      ${c.sections.map((s) => UI.printConditionSection(s, c.options)).join('')}
+      <div class="fr-tc-cards">
+        <div class="fr-tc-card">
+          <h4>ROB prior bunkering → received → present (MT)</h4>
+          <table class="fr-tc-mini">
+            <thead><tr><th>Grade</th><th>Prior</th><th>Added</th><th>Present</th></tr></thead>
+            <tbody>${gradeRows || '<tr><td colspan="4">—</td></tr>'}</tbody>
+            <tfoot>${gradeGroupRows}</tfoot>
+          </table>
+          <p class="calib-print-note">Added = present − ROB prior. HFO/VLSFO and MO/MGO/LSMGO totals stay separate.</p>
+        </div>
+      </div>
+      <div class="fr-tc-signoff">
+        ${UI.printSignatureBlock(c.signature && c.signature.preparedBy, c.signature && c.signature.rank)}
+      </div>
+      ${UI.footer(`${c.vessel.name} · after bunkering · ${c.header.dateTime}`)}
+    </section>`;
+  }
+
+  /* ============================================================= summary ==== */
+
+  function recomputeSummary() {
+    view.computed = Core.computeBunkerSummary(bundle(), view.summary, null, view.conversion);
+    return view.computed;
+  }
+
+  async function renderSummary(main) {
+    view.page = 'bunker-summary';
+    await loadConversion();
+    const b = bundle();
+    if (!view.pendingSummary) {
+      const back = recoverDraft('bunker-summary', b.bunkerSummary);
+      if (back) { view.pendingSummary = back; showToast('Your unsaved Bunkering Summary draft was restored'); }
+    }
+    const summaryFromPending = !!view.pendingSummary;
+    view.summary = Core.normalizeSummary(b, view.pendingSummary || b.bunkerSummary);
+    view.pendingSummary = null;
+    const c = recomputeSummary();
+
+    main.innerHTML += `${UI.bunkerNavHtml('bunker-summary')}<div class="page-head no-print">
+      <div><h1>Bunkering Report Summary</h1>
+        <div class="desc">BDN paperwork, fuel onboard before and after, and the tanks after bunkering</div></div>
+      <div class="btn-row">
+        <button class="btn primary" id="bs-print-save">PRINT &amp; SAVE</button>
+        <button class="btn" id="bs-save">Save only</button>
+        <button class="btn" id="bs-print-only">Print only</button>
+        <button class="btn" id="bs-new">NEW REPORT</button>
+        ${mainMenuButton('bs-menu')}
+      </div></div>`;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'fuel-report-page';
+    wrap.innerHTML = `
+      ${summaryDetailsPanel(c)}
+      ${summaryQuantitiesPanel(c)}
+      <div class="form-panel no-print" style="margin-top:16px">
+        <div class="section-title" style="margin-top:0">Tanks after bunkering</div>
+        ${readOnlyTankTable(c.after)}
+      </div>
+      <div class="form-panel no-print">
+        <details class="saved-reports-fold">
+          <summary class="section-title" style="margin-top:0; cursor:pointer;">Saved summaries</summary>
+          <p class="hint" style="margin-top:8px;">Saved drafts stay editable. Filed reports can be reprinted or loaded.</p>
+          ${historyRows(bunkerHistory().summaries, 'summaries', view.summary && view.summary.updatedAt ? {
+            form: view.summary,
+            voyageNo: view.summary.voyageNo,
+            port: view.summary.port,
+            savedAt: view.summary.updatedAt,
+          } : null)}
+        </details>
+      </div>`;
+    main.appendChild(wrap);
+
+    bindSummaryEvents(wrap);
+    UI.bindBunkerNav(main);
+    hookDraft(wrap, 'bunker-summary');
+    refreshSummary();
+    if (summaryFromPending) scheduleDraft('bunker-summary');
+  }
+
+  function summaryDetailsPanel(c) {
+    const f = view.summary;
+    const eventRows = Core.SUMMARY_EVENTS.map((e) => `
+      <div class="bs-event">
+        <span>${esc(e.label)}</span>
+        <input type="date" data-event="${e.id}.date" value="${esc(f.events[e.id].date)}">
+        <input type="time" data-event="${e.id}.time" value="${esc(f.events[e.id].time)}">
+      </div>`).join('');
+    const eventRows2 = f.bdn2 ? Core.SUMMARY_LINE_EVENTS.map((e) => `
+      <div class="bs-event">
+        <span>${esc(e.label)}</span>
+        <input type="date" data-event2="${e.id}.date" value="${esc(((f.events2 || {})[e.id] || {}).date || '')}">
+        <input type="time" data-event2="${e.id}.time" value="${esc(((f.events2 || {})[e.id] || {}).time || '')}">
+      </div>`).join('') : '';
+    const conditions = Core.SHIP_CONDITIONS.map((s) => `
+      <label class="bs-check"><input type="radio" name="bs-condition" value="${s.id}"
+        ${f.shipCondition === s.id ? 'checked' : ''}> ${esc(s.label)}</label>`).join('');
+    const grades = Core.COMMON_FUEL_GRADES.map((g) => `<option value="${esc(g)}"></option>`).join('');
+
+    return `<div class="form-panel no-print">
+      <div class="bs-grid">
+        <div>
+          <div class="section-title" style="margin-top:0">Vessel &amp; call</div>
+          <div class="fr-quant">
+            <label class="fr-field"><span>VESSEL</span>
+              <output class="fr-out">${esc(c.vessel.name)}</output></label>
+            <label class="fr-field"><span>VOYAGE NO.</span>
+              <input data-sum="voyageNo" value="${esc(f.voyageNo)}"></label>
+            <label class="fr-field"><span>DATE</span>
+              <input type="date" data-sum="date" value="${esc(f.date)}"></label>
+            <label class="fr-field fr-field-wide"><span>PORT / PLACE</span>
+              <input data-sum="port" value="${esc(f.port)}"></label>
+          </div>
+          <div class="section-title">Times</div>
+          <div class="bs-events">${eventRows}</div>
+          <div class="hint" data-bs="timing"></div>
+          ${f.bdn2 ? `<div class="section-title">Times — second fuel (${esc((FRCore.FUEL_TYPES.find((t) => t.id === f.bdn2.fuelType) || {}).label || 'second fuel')}, its own hose and pump)</div>
+          <div class="bs-events">${eventRows2}</div>
+          <div class="hint" data-bs="timing2"></div>` : ''}
+        </div>
+        <div>
+          <div class="section-title" style="margin-top:0">Delivery</div>
+          <div class="fr-quant">
+            <label class="fr-field"><span>BARGE NAME</span>
+              <input data-sum="bargeName" value="${esc(f.bargeName)}"></label>
+            <label class="fr-field"><span>SUPPLIER</span>
+              <input data-sum="supplier" value="${esc(f.supplier)}"></label>
+            <label class="fr-field"><span>FUEL GRADE</span>
+              <input list="bs-grades" data-sum="fuelGrade" value="${esc(f.fuelGrade)}">
+              <datalist id="bs-grades">${grades}</datalist></label>
+            <label class="fr-field"><span>B.D.N. / B.D.R.</span>
+              <input data-sum="bdnNumber" value="${esc(f.bdnNumber)}"></label>
+          </div>
+          <div class="section-title">Condition &amp; samples</div>
+          <div class="bs-checks">
+            <div class="bs-check-group"><span>SHIP'S CONDITION</span>${conditions}</div>
+            <label class="bs-check"><input type="checkbox" data-sum="letterOfProtest"
+              ${f.letterOfProtest ? 'checked' : ''}> LETTER OF PROTEST ISSUED</label>
+            <label class="bs-check"><input type="checkbox" data-sum="samplesGiven"
+              ${f.samplesGiven ? 'checked' : ''}> SAMPLE/S GIVEN FOR ANALYSIS</label>
+          </div>
+          <label class="fr-field" style="margin-top:10px"><span>REMARKS</span>
+            <textarea data-sum="remarks" rows="3">${esc(f.remarks)}</textarea></label>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  /** The grade a second delivery most likely is: a distillate with a residual fuel, and the other way round. */
+  function otherGradeFor(first) {
+    return Core.DISTILLATE_FUEL_TYPES.includes(first) ? 'lsfo' : 'lsmgo';
+  }
+
+  /** The second delivery note: another grade received in the same delivery, from the same supplier and barge. */
+  function bdn2PanelHtml(f) {
+    if (!f.bdn2) {
+      return '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn small primary" id="bs-add-bdn2">+ Add second fuel (VLSFO with LSMGO…)</button></div>'
+        + '<div class="hint">Two grades received in one delivery, from the same supplier and barge, go on this one report: add a second delivery note.</div>';
+    }
+    const grades = FRCore.FUEL_TYPES.filter((t) => t.id !== f.bdn.fuelType).map((t) =>
+      `<option value="${t.id}" ${f.bdn2.fuelType === t.id ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
+    return `<div class="section-title">Bunker details — second fuel (second BDN, same supplier)</div>
+      <div class="fr-quant">
+        <label class="fr-field"><span>GRADE</span><select data-bdn2="fuelType">${grades}</select></label>
+        <label class="fr-field"><span>B.D.N. NO.</span><input data-bdn2="number" value="${esc(f.bdn2.number)}"></label>
+        <label class="fr-field"><span>QUANTITY (MT)</span>
+          <input type="number" step="any" data-bdn2="quantityMT" value="${esc(f.bdn2.quantityMT)}"></label>
+        <label class="fr-field"><span>SULPHUR (%)</span>
+          <input type="number" step="any" data-bdn2="sulphurPercent" value="${esc(f.bdn2.sulphurPercent)}"></label>
+        <label class="fr-field"><span>DENSITY @15°</span>
+          <input type="number" step="any" data-bdn2="density15" value="${esc(f.bdn2.density15)}"></label>
+        <label class="fr-field"><span>LCV / net specific energy (kJ/kg or MJ/kg)</span>
+          <input type="number" step="any" data-bdn2="lcv" value="${esc(f.bdn2.lcv)}" placeholder="e.g. 40500 or 40.5"></label>
+      </div>
+      <div class="bs-quantities">
+        <div class="bp-monitor-box"><span>BDN QUANTITY</span><b data-bs2="bdnQuantityMT"></b></div>
+        <div class="bp-monitor-box"><span>RECEIVED QUANTITY</span><b data-bs2="receivedQuantityMT"></b></div>
+        <div class="bp-monitor-box" id="bs-diff-box2"><span>DIFFERENCE</span><b data-bs2="differenceMT"></b></div>
+      </div>
+      <div class="hint" data-bs2="difference-note"></div>
+      <div class="btn-row"><button type="button" class="btn small danger" id="bs-remove-bdn2">Remove second fuel</button></div>`;
+  }
+
+  /** Extra delivery notes: any grade, any number, all from the same supplier and barge. */
+  function extraBdnPanelsHtml(f) {
+    const grades = (sel) => FRCore.FUEL_TYPES.map((t) =>
+      `<option value="${t.id}" ${sel === t.id ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
+    const panels = (f.extraBdns || []).map((e, i) => `
+      <div class="section-title">Extra BDN ${i + 1}</div>
+      <div class="fr-quant">
+        <label class="fr-field"><span>GRADE</span><select data-xbdn="${i}.fuelType">${grades(e.fuelType)}</select></label>
+        <label class="fr-field"><span>B.D.N. NO.</span><input data-xbdn="${i}.number" value="${esc(e.number)}"></label>
+        <label class="fr-field"><span>QUANTITY (MT)</span>
+          <input type="number" step="any" data-xbdn="${i}.quantityMT" value="${esc(e.quantityMT)}"></label>
+        <label class="fr-field"><span>SULPHUR (%)</span>
+          <input type="number" step="any" data-xbdn="${i}.sulphurPercent" value="${esc(e.sulphurPercent)}"></label>
+        <label class="fr-field"><span>DENSITY @15°</span>
+          <input type="number" step="any" data-xbdn="${i}.density15" value="${esc(e.density15)}"></label>
+        <label class="fr-field"><span>LCV / net specific energy (kJ/kg or MJ/kg)</span>
+          <input type="number" step="any" data-xbdn="${i}.lcv" value="${esc(e.lcv)}" placeholder="e.g. 40500 or 40.5"></label>
+      </div>
+      <div class="bs-quantities">
+        <div class="bp-monitor-box"><span>BDN QUANTITY</span><b data-bsx="${i}.bdnQuantityMT"></b></div>
+        <div class="bp-monitor-box"><span>RECEIVED QUANTITY</span><b data-bsx="${i}.receivedQuantityMT"></b></div>
+        <div class="bp-monitor-box" id="bs-diff-box-x${i}"><span>DIFFERENCE</span><b data-bsx="${i}.differenceMT"></b></div>
+      </div>
+      <div class="hint" data-bsx="${i}.note"></div>
+      <div class="btn-row"><button type="button" class="btn small danger" data-xbdn-remove="${i}">Remove extra BDN ${i + 1}</button></div>`).join('');
+    return `${panels}
+      <div class="btn-row" style="margin-top:8px"><button type="button" class="btn small" id="bs-add-xbdn">+ Add extra BDN</button></div>
+      <div class="hint">Another delivery note of this delivery, same supplier and barge — a different grade, or a second note for a grade already listed (the notes of one grade are added up against what was received).</div>`;
+  }
+
+  /** One delivery of two grades prints both: "VLSFO + LSMGO", and both delivery note numbers. */
+  function summaryGradesText(c) {
+    let text = c.fuelGrade || (c.bdn && c.bdn.label) || '';
+    [c.bdn2, ...(c.extraBdns || [])].filter(Boolean).forEach((b) => {
+      if (!text.toLowerCase().includes(String(b.label || '').toLowerCase())) text = `${text} + ${b.label}`;
+    });
+    return text;
+  }
+  function summaryBdnNumbersText(c) {
+    return [c.bdnNumber, c.bdn2 && c.bdn2.number, ...(c.extraBdns || []).map((b) => b.number)].filter(Boolean).join(' / ');
+  }
+
+  function summaryQuantitiesPanel(c) {
+    const f = view.summary;
+    const lubes = FRCore.LUBE_FIELDS.map((l) => `
+      <label class="fr-field"><span>${esc(l.label)}</span>
+        <input type="number" step="any" data-lube="${l.id}" value="${esc(f.lubes[l.id])}"></label>`).join('');
+    const fuelRows = c.fuelOnboard.map((g) => `<tr>
+      <td class="fr-tank-name">${esc(g.label)}</td>
+      <td data-bs-fuel="${g.id}.previousMT"></td>
+      <td data-bs-fuel="${g.id}.receivedMT"></td>
+      <td data-bs-fuel="${g.id}.presentMT"></td>
+    </tr>`).join('');
+    const bdnGrades = FRCore.FUEL_TYPES.map((t) =>
+      `<option value="${t.id}" ${f.bdn.fuelType === t.id ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
+
+    return `<div class="form-panel no-print" style="margin-top:16px">
+      <div class="bs-grid">
+        <div>
+          <div class="section-title" style="margin-top:0">Fuel remaining onboard (MT)</div>
+          <div class="scroll-x"><table class="fr-sheet">
+            <thead><tr><th>GRADE</th><th>PREVIOUS</th><th>RECEIVED</th><th>PRESENT</th></tr></thead>
+            <tbody>${fuelRows}</tbody>
+          </table></div>
+          <p class="hint">Straight from the after-bunkering report — previous is the ROB prior to bunkering.</p>
+          <div class="section-title">Lubes remaining onboard</div>
+          <div class="fr-quant">${lubes}</div>
+        </div>
+        <div>
+          <div class="section-title" style="margin-top:0">Bunker details (BDN)</div>
+          <div class="fr-quant">
+            <label class="fr-field"><span>GRADE</span>
+              <select data-bdn="fuelType">${bdnGrades}</select></label>
+            <label class="fr-field"><span>QUANTITY (MT)</span>
+              <input type="number" step="any" data-bdn="quantityMT" value="${esc(f.bdn.quantityMT)}"></label>
+            <label class="fr-field"><span>SULPHUR (%)</span>
+              <input type="number" step="any" data-bdn="sulphurPercent" value="${esc(f.bdn.sulphurPercent)}"></label>
+            <label class="fr-field"><span>DENSITY @15°</span>
+              <input type="number" step="any" data-bdn="density15" value="${esc(f.bdn.density15)}"></label>
+            <label class="fr-field"><span>LCV / net specific energy (kJ/kg or MJ/kg)</span>
+              <input type="number" step="any" data-bdn="lcv" value="${esc(f.bdn.lcv)}" placeholder="e.g. 40500 or 40.5"></label>
+          </div>
+          <div class="bs-quantities">
+            <div class="bp-monitor-box"><span>BDN QUANTITY</span><b data-bs="bdnQuantityMT"></b></div>
+            <div class="bp-monitor-box"><span>RECEIVED QUANTITY</span><b data-bs="receivedQuantityMT"></b></div>
+            <div class="bp-monitor-box" id="bs-diff-box"><span>DIFFERENCE</span><b data-bs="differenceMT"></b></div>
+          </div>
+          <div class="hint" data-bs="difference-note"></div>
+          ${bdn2PanelHtml(f)}
+          ${extraBdnPanelsHtml(f)}
+          <div class="section-title">BDN document / photo</div>
+          <div class="btn-row" style="flex-wrap:wrap; gap:8px; align-items:center;">
+            <input type="file" id="bs-bdn-photo-file" accept="image/*,application/pdf,.pdf" style="max-width:240px;">
+            <button type="button" class="ghost small" id="bs-bdn-take-photo">Take Picture</button>
+            <button type="button" class="ghost small" id="bs-bdn-clear-photo">Remove</button>
+          </div>
+          <div id="bs-bdn-photo-preview" class="hint" style="margin-top:8px;">No BDN photo attached.</div>
+          <div class="hint">Photograph the BDN on Android or a Windows webcam, or choose a PDF/image. Signature and vessel stamp stay on Setup — this is paperwork only.</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function refreshSummary() {
+    const c = recomputeSummary();
+    const set = UI.setCell;
+
+    for (const g of c.fuelOnboard) {
+      set(`[data-bs-fuel="${g.id}.previousMT"]`, n(g.previousMT, 3, '—'));
+      set(`[data-bs-fuel="${g.id}.receivedMT"]`, g.receivedMT != null ? signed(g.receivedMT, 3) : '—');
+      set(`[data-bs-fuel="${g.id}.presentMT"]`, n(g.presentMT, 3, '—'));
+    }
+    set('[data-bs="bdnQuantityMT"]', n(c.quantities.bdnQuantityMT, 3, '—'));
+    set('[data-bs="receivedQuantityMT"]', n(c.quantities.receivedQuantityMT, 3, '—'));
+    set('[data-bs="differenceMT"]', c.quantities.differenceMT != null
+      ? signed(c.quantities.differenceMT, 3) : '—');
+
+    const diff = c.quantities.differencePercent;
+    // Say which half of the comparison is missing. "Enter a BDN quantity" was
+    // wrong advice when the BDN was already in and the soundings were not.
+    const pending = c.quantities.pendingReason === 'no-bdn'
+      ? 'Enter the BDN quantity to compare it with what the tanks show.'
+      : 'Waiting on the after-bunkering soundings for this grade — no measured '
+        + 'figure to compare the BDN against yet.';
+    set('[data-bs="difference-note"]', diff != null
+      ? `${signed(diff, 3)}% against the BDN figure — ${Math.abs(diff) > 0.5
+        ? 'outside the 0.5% normally accepted; consider a letter of protest'
+        : 'within the 0.5% normally accepted'}.`
+      : pending);
+    const box = document.getElementById('bs-diff-box');
+    if (box) box.classList.toggle('bp-monitor-bad', diff != null && Math.abs(diff) > 0.5);
+
+    (c.extraQuantities || []).forEach((q, i) => {
+      set(`[data-bsx="${i}.bdnQuantityMT"]`, n(q.bdnQuantityMT, 3, '—'));
+      set(`[data-bsx="${i}.receivedQuantityMT"]`, n(q.receivedQuantityMT, 3, '—'));
+      set(`[data-bsx="${i}.differenceMT"]`, q.differenceMT != null ? signed(q.differenceMT, 3) : '—');
+      const dx = q.differencePercent;
+      set(`[data-bsx="${i}.note"]`, (q.gradeTotalMT != null ? `All ${c.extraBdns[i].label} notes add up to ${n(q.gradeTotalMT, 3)} MT. ` : '')
+        + (dx != null
+          ? `${signed(dx, 3)}% against the BDN figure — ${Math.abs(dx) > 0.5 ? 'outside the 0.5% normally accepted; consider a letter of protest' : 'within the 0.5% normally accepted'}.`
+          : q.pendingReason === 'no-bdn' ? 'Enter the BDN quantity to compare it with what the tanks show.'
+            : 'Waiting on the after-bunkering soundings for this grade.'));
+      const bx = document.getElementById(`bs-diff-box-x${i}`);
+      if (bx) bx.classList.toggle('bp-monitor-bad', dx != null && Math.abs(dx) > 0.5);
+    });
+    if (c.quantities2) {
+      const q2 = c.quantities2;
+      set('[data-bs2="bdnQuantityMT"]', n(q2.bdnQuantityMT, 3, '—'));
+      set('[data-bs2="receivedQuantityMT"]', n(q2.receivedQuantityMT, 3, '—'));
+      set('[data-bs2="differenceMT"]', q2.differenceMT != null ? signed(q2.differenceMT, 3) : '—');
+      const d2 = q2.differencePercent;
+      set('[data-bs2="difference-note"]', d2 != null
+        ? `${signed(d2, 3)}% against the distillate BDN — ${Math.abs(d2) > 0.5
+          ? 'outside the 0.5% normally accepted; consider a letter of protest' : 'within the 0.5% normally accepted'}.`
+        : (q2.pendingReason === 'no-bdn' ? 'Enter the distillate BDN quantity to compare it with what the tanks show.'
+          : 'Waiting on the after-bunkering soundings for this grade.'));
+      const box2 = document.getElementById('bs-diff-box2');
+      if (box2) box2.classList.toggle('bp-monitor-bad', d2 != null && Math.abs(d2) > 0.5);
+    }
+    set('[data-bs="timing"]', `Pumping ${c.timing.pumpingLabel} · alongside ${c.timing.alongsideLabel}`
+      + (c.timing.averageRateMTPerHour != null
+        ? ` · average rate ${n(c.timing.averageRateMTPerHour, 1)} MT/h` : '')
+      + ((c.timing.warnings || []).length ? ` · ${c.timing.warnings.join(' ')}` : ''));
+    const t2 = c.timing.second;
+    if (t2) {
+      set('[data-bs="timing2"]', `${t2.fuelLabel}: pumping ${t2.pumpingLabel} · hose connected ${t2.hoseLabel}`
+        + (t2.averageRateMTPerHour != null ? ` · average rate ${n(t2.averageRateMTPerHour, 1)} MT/h` : '')
+        + ((t2.warnings || []).length ? ` · ${t2.warnings.join(' ')}` : ''));
+    }
+  }
+
+  function renderBdnPhotoPreview() {
+    const box = document.getElementById('bs-bdn-photo-preview');
+    if (!box) return;
+    const photo = view.summary && view.summary.bdnPhoto;
+    if (!photo || !photo.dataUrl) {
+      box.innerHTML = 'No BDN photo attached.';
+      box.className = 'hint';
+      return;
+    }
+    const isImg = photo.mime
+      ? String(photo.mime).startsWith('image/')
+      : /^data:image\//i.test(photo.dataUrl);
+    box.className = '';
+    box.innerHTML = isImg
+      ? `<img src="${photo.dataUrl}" alt="BDN photo" data-viewer data-viewer-title="BDN photo" data-viewer-name="${esc(photo.filename || 'bdn-photo.jpg')}" style="max-width:100%;max-height:220px;border:1px solid var(--line,#333);border-radius:4px;"><div class="hint" style="margin:4px 0 0;">Tap the photo to open it full screen and zoom.</div>`
+      : `<div class="hint" style="margin:0;">Attached: ${esc(photo.filename || 'BDN document')} <button type="button" class="ghost small" id="bs-bdn-view-doc">View</button></div>`;
+    const viewBtn = document.getElementById('bs-bdn-view-doc');
+    if (viewBtn && window.ChengFileViewer) {
+      viewBtn.onclick = () => ChengFileViewer.open({ src: photo.dataUrl, mime: photo.mime, filename: photo.filename, title: photo.filename || 'BDN document' });
+    }
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('read failed'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function setBdnPhotoFromFile(file) {
+    if (!file) return;
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    const isImage = (file.type && file.type.startsWith('image/')) || /\.(jpe?g|png|webp|gif)$/i.test(file.name);
+    if (!isPdf && !isImage) {
+      showToast('Choose a PDF or image of the BDN');
+      return;
+    }
+    let dataUrl = await readFileAsDataUrl(file);
+    if (isImage && typeof ImageCutout !== 'undefined' && ImageCutout.toPngDataUrl) {
+      try { dataUrl = await ImageCutout.toPngDataUrl(file); } catch (_) { /* keep raw */ }
+    }
+    view.summary.bdnPhoto = {
+      filename: file.name || (isImage ? 'bdn-photo.jpg' : 'bdn.pdf'),
+      mime: file.type || (isPdf ? 'application/pdf' : 'image/jpeg'),
+      dataUrl,
+      capturedAt: new Date().toISOString()
+    };
+    renderBdnPhotoPreview();
+    scheduleDraft('bunker-summary');
+  }
+
+  function wireBdnPhotoUi() {
+    const fileEl = document.getElementById('bs-bdn-photo-file');
+    const clearBtn = document.getElementById('bs-bdn-clear-photo');
+    fileEl?.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        await setBdnPhotoFromFile(file);
+      } catch (_) {
+        showToast('Could not load that BDN file');
+      }
+    });
+    clearBtn?.addEventListener('click', () => {
+      view.summary.bdnPhoto = null;
+      if (fileEl) fileEl.value = '';
+      renderBdnPhotoPreview();
+      scheduleDraft('bunker-summary');
+    });
+    if (typeof ChengCamera !== 'undefined') {
+      ChengCamera.wireTakePictureButton(document.getElementById('bs-bdn-take-photo'), {
+        fileInput: fileEl,
+        title: 'Photograph BDN',
+        basename: 'bdn',
+        onFile: (file) => setBdnPhotoFromFile(file)
+      });
+    }
+    renderBdnPhotoPreview();
+  }
+
+  function bindSummaryEvents(wrap) {
+    const apply = (el) => {
+      if (el.dataset.sum) {
+        view.summary[el.dataset.sum] = el.type === 'checkbox' ? el.checked : el.value;
+      } else if (el.dataset.event) {
+        const [id, field] = el.dataset.event.split('.');
+        view.summary.events[id][field] = el.value;
+      } else if (el.dataset.event2) {
+        const [id, field] = el.dataset.event2.split('.');
+        if (!view.summary.events2) view.summary.events2 = {};
+        if (!view.summary.events2[id]) view.summary.events2[id] = { date: '', time: '' };
+        view.summary.events2[id][field] = el.value;
+      } else if (el.dataset.lube) {
+        view.summary.lubes[el.dataset.lube] = el.value;
+      } else if (el.dataset.bdn) {
+        view.summary.bdn[el.dataset.bdn] = el.value;
+      } else if (el.dataset.xbdn) {
+        const [idx, field] = el.dataset.xbdn.split('.');
+        const row = (view.summary.extraBdns || [])[Number(idx)];
+        if (!row) return false;
+        row[field] = el.value;
+      } else if (el.dataset.bdn2 && view.summary.bdn2) {
+        view.summary.bdn2[el.dataset.bdn2] = el.value;
+      } else if (el.name === 'bs-condition') {
+        view.summary.shipCondition = el.value;
+      } else {
+        return false;
+      }
+      return true;
+    };
+    wrap.addEventListener('input', (e) => { if (apply(e.target)) refreshSummary(); });
+    wrap.addEventListener('change', (e) => {
+      if (!apply(e.target)) return;
+      /* The second fuel is never the first grade again: moving the first onto it moves the second away, and the
+         second's list of grades follows the first. */
+      if (e.target.dataset.bdn === 'fuelType' && view.summary.bdn2) {
+        if (view.summary.bdn2.fuelType === view.summary.bdn.fuelType) view.summary.bdn2.fuelType = otherGradeFor(view.summary.bdn.fuelType);
+        view.pendingSummary = view.summary;
+        navigate('bunker-summary');
+        return;
+      }
+      refreshSummary();
+    });
+    wireBdnPhotoUi();
+    const addB2 = document.getElementById('bs-add-bdn2');
+    if (addB2) addB2.onclick = () => {
+      view.summary.bdn2 = { fuelType: otherGradeFor(view.summary.bdn.fuelType), quantityMT: '', sulphurPercent: '', density15: '', number: '' };
+      view.pendingSummary = view.summary;
+      navigate('bunker-summary');
+    };
+    const addX = document.getElementById('bs-add-xbdn');
+    if (addX) addX.onclick = () => {
+      view.summary.extraBdns = [...(view.summary.extraBdns || []),
+        { fuelType: view.summary.bdn.fuelType || 'lsfo', quantityMT: '', sulphurPercent: '', density15: '', number: '' }];
+      view.pendingSummary = view.summary;
+      navigate('bunker-summary');
+    };
+    wrap.querySelectorAll('[data-xbdn-remove]').forEach((btn) => {
+      btn.onclick = () => {
+        const i = Number(btn.dataset.xbdnRemove);
+        if (!confirm(`Remove extra BDN ${i + 1} from this summary?`)) return;
+        view.summary.extraBdns = (view.summary.extraBdns || []).filter((_, k) => k !== i);
+        view.pendingSummary = view.summary;
+        navigate('bunker-summary');
+      };
+    });
+    const rmB2 = document.getElementById('bs-remove-bdn2');
+    if (rmB2) rmB2.onclick = () => {
+      if (!confirm('Remove the second fuel from this summary?')) return;
+      view.summary.bdn2 = null;
+      view.pendingSummary = view.summary;
+      navigate('bunker-summary');
+    };
+
+    /* The tanks' before and after ROB go with the summary, so the tank fuel register can work out what each tank now holds. */
+    const withTankLoads = (form) => {
+      const out = { ...form, bunkeringId: form.bunkeringId || `bk_${Date.now().toString(36)}` };
+      try {
+        const after = bundle().bunkerAfter
+          ? Core.computeAfterBunkering(bundle(), bundle().bunkerAfter, view.conversion) : null;
+        if (after) {
+          const loads = Core.tankLoadsFromAfter(after);
+          if (loads.length) {
+            out.tankLoads = loads;
+            out.loadsTs = out.loadsTs || (after.header && after.header.date
+              ? new Date(`${after.header.date}T${after.header.time || '00:00'}`).toISOString() : new Date().toISOString());
+          }
+        }
+      } catch (err) { console.warn('tank loads not captured', err); }
+      return out;
+    };
+    document.getElementById('bs-print-save').onclick = async () => {
+      Branding.beginPrintHold();
+      try {
+        await saveChainPart('bunker-summary', 'bunkerSummary',
+          withTankLoads({ ...view.summary, updatedAt: new Date().toISOString() }), { snapshot: true, deferServer: true });
+        UI.printHtml(summaryPrintPages(recomputeSummary()));
+      } catch (err) {
+        Branding.endPrintHold();
+        throw err;
+      }
+    };
+    document.getElementById('bs-save').onclick = () => saveChainPart('bunker-summary', 'bunkerSummary',
+      withTankLoads({ ...view.summary, updatedAt: new Date().toISOString() }), { snapshot: true });
+    document.getElementById('bs-print-only').onclick = () =>
+      UI.printHtml(summaryPrintPages(recomputeSummary()));
+    const bsMenu = document.getElementById('bs-menu');
+    if (bsMenu) bsMenu.onclick = () => navigate('dashboard');
+    document.getElementById('bs-new').onclick = () => {
+      if (!confirm('Start a new summary? The current paperwork is cleared.')) return;
+      view.pendingSummary = Core.emptySummary(bundle());
+      navigate('bunker-summary');
+    };
+
+    bindHistory(wrap, 'summaries', (entry) => {
+      view.pendingSummary = entry.form;
+      navigate('bunker-summary');
+      showToast(entry.isDraft || entry.id === '__draft__' ? 'Draft loaded for editing' : 'Summary loaded');
+    }, view.summary);
+  }
+
+  /** Fuel onboard split into HFO/VLSFO and MO/MGO/LSMGO tables (Tank Condition style). */
+  function fuelOnboardSectionHtml(c) {
+    return (FRCore.SECTIONS || []).map((sec) => {
+      const members = (c.fuelOnboard || []).filter((g) => (sec.grades || []).includes(g.id));
+      const rows = members.map((g) => `<tr>
+        <td class="fr-print-name">${esc(g.label)}</td>
+        <td>${n(g.previousMT, 3, '—')}</td>
+        <td>${g.receivedMT != null ? signed(g.receivedMT, 3) : '—'}</td>
+        <td class="fr-print-weight">${n(g.presentMT, 3, '—')}</td>
+      </tr>`).join('');
+      const prev = members.reduce((s, g) => s + (Number(g.previousMT) || 0), 0);
+      const recv = members.reduce((s, g) => s + (Number(g.receivedMT) || 0), 0);
+      const present = members.reduce((s, g) => s + (Number(g.presentMT) || 0), 0);
+      const anyPrev = members.some((g) => g.previousMT != null);
+      const anyRecv = members.some((g) => g.receivedMT != null);
+      const anyPresent = members.some((g) => g.presentMT != null);
+      return `<section class="fr-tc-block">
+        <div class="fr-tc-block-head">
+          <h3>${esc(sec.title)}</h3>
+          <span>${members.length} grade${members.length === 1 ? '' : 's'}</span>
+        </div>
+        <table class="fr-tc-table">
+          <thead><tr><th class="fr-print-name">Grade</th><th>Previous</th><th>Received</th><th>Present MT</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="4">—</td></tr>'}</tbody>
+          <tfoot><tr>
+            <th class="fr-print-name">${esc(sec.totalLabel || 'TOTAL')}</th>
+            <td><b>${anyPrev ? n(prev, 3) : '—'}</b></td>
+            <td><b>${anyRecv ? signed(recv, 3) : '—'}</b></td>
+            <td class="fr-tc-total-mt"><b>${anyPresent ? n(present, 3) : '—'}</b></td>
+          </tr></tfoot>
+        </table>
+      </section>`;
+    }).join('');
+  }
+
+  /** Tank Condition face for before/after sheets attached to the summary pack. */
+  function summaryConditionPage(computed, title, note) {
+    if (!computed || !computed.sections || !computed.sections.length) {
+      return `<section class="calib-print-page fr-tc-page">
+        ${UI.masthead(title, `${cVessel(computed)} · ${esc((computed && computed.header && computed.header.date) || '')}`)}
+        <p class="calib-print-note">${esc(note || 'No tank condition recorded for this stage.')}</p>
+        ${UI.printSignatureBlock()}
+        ${UI.footer(title)}
+      </section>`;
+    }
+    return `<section class="calib-print-page fr-tc-page">
+      ${UI.printMasthead(computed, { title })}
+      ${computed.sections.map((s) => UI.printConditionSection(s, computed.options)).join('')}
+      <p class="calib-print-note">${esc(note || '')}</p>
+      <div class="fr-tc-signoff">
+        ${UI.printSignatureBlock(computed.signature && computed.signature.preparedBy, computed.signature && computed.signature.rank)}
+      </div>
+      ${UI.footer(`${computed.vessel && computed.vessel.name ? computed.vessel.name : ''} · ${title}`)}
+    </section>`;
+  }
+
+  function cVessel(computed) {
+    return (computed && computed.vessel && computed.vessel.name) || '';
+  }
+
+  function summaryPrintPages(c) {
+    const eventRows = c.eventLabels.map((e) => {
+      const v = c.events[e.id] || {};
+      return `<tr><td class="fr-print-name">${esc(e.label)}</td>
+        <td>${esc(v.date || '—')}</td><td>${esc(v.time || '—')}</td></tr>`;
+    }).join('');
+
+    const eventRows2 = (c.events2 && c.bdn2) ? (c.lineEventLabels || []).map((e) => {
+      const v = c.events2[e.id] || {};
+      return `<tr><td class="fr-print-name">${esc(e.label)}</td>
+        <td>${esc(v.date || '—')}</td><td>${esc(v.time || '—')}</td></tr>`;
+    }).join('') : '';
+
+    const lubeRows = FRCore.LUBE_FIELDS.map((l) => `<tr>
+      <td class="fr-print-name">${esc(l.label)}</td>
+      <td>${n(c.lubes[l.id], 2, '—')}</td>
+    </tr>`).join('');
+
+    const cover = `<section class="calib-print-page fr-tc-page">
+      ${UI.masthead('BUNKERING REPORT SUMMARY', `${c.vessel.name} · ${c.port || ''}`)}
+      ${UI.metaGrid([
+        ['Vessel', c.vessel.name],
+        ['Voyage No.', c.voyageNo],
+        ['Date', c.date],
+        ['Port / place', c.port],
+        ['Barge', c.bargeName],
+        ['Supplier', c.supplier],
+        ['Fuel grade', summaryGradesText(c)],
+        ['B.D.N. / B.D.R.', summaryBdnNumbersText(c)],
+        ["Ship's condition", (Core.SHIP_CONDITIONS.find((s) => s.id === c.shipCondition) || {}).label || '—'],
+        ['Letter of protest', c.letterOfProtest ? 'YES' : 'NO'],
+        ['Samples for analysis', c.samplesGiven ? 'YES' : 'NO'],
+        ['Pumping / alongside', `${c.timing.pumpingLabel} / ${c.timing.alongsideLabel}`],
+      ])}
+      <div class="fr-print-cols">
+        <div>
+          <h3 class="fr-print-h3">Times</h3>
+          <table class="fr-print-table">
+            <thead><tr><th>Event</th><th>Date</th><th>Time</th></tr></thead>
+            <tbody>${eventRows}</tbody>
+          </table>
+          ${c.events2 && c.bdn2 ? `<h3 class="fr-print-h3">Times — second fuel (${esc(c.bdn2.label)})</h3>
+          <table class="fr-print-table">
+            <thead><tr><th>Event</th><th>Date</th><th>Time</th></tr></thead>
+            <tbody>${eventRows2}</tbody>
+          </table>
+          ${c.timing.second ? `<p class="hint" style="font-size:11px;margin:4px 0 0;">${esc(c.bdn2.label)}: pumping ${esc(c.timing.second.pumpingLabel)}, hose connected ${esc(c.timing.second.hoseLabel)}${c.timing.second.averageRateMTPerHour != null ? `, average rate ${n(c.timing.second.averageRateMTPerHour, 1, '—')} MT/h` : ''}.</p>` : ''}` : ''}
+          <h3 class="fr-print-h3">Lubes remaining onboard</h3>
+          <table class="fr-print-table"><tbody>${lubeRows}</tbody></table>
+        </div>
+        <div>
+          <h3 class="fr-print-h3">Bunker details (BDN)</h3>
+          <table class="fr-print-table"><tbody>
+            <tr><td class="fr-print-name">Grade</td><td>${esc(c.bdn.label)}</td></tr>
+            <tr><td class="fr-print-name">Quantity</td><td>${n(c.bdn.quantityMT, 3, '—')} MT</td></tr>
+            <tr><td class="fr-print-name">Sulphur</td><td>${n(c.bdn.sulphurPercent, 3, '—')} %</td></tr>
+            <tr><td class="fr-print-name">Density @15°</td><td>${n(c.bdn.density15, 4, '—')}</td></tr>
+            <tr><td class="fr-print-name">LCV (kJ/kg)</td><td>${n(c.bdn.lcv, 0, '—')}</td></tr>
+          </tbody></table>
+          <h3 class="fr-print-h3">BDN vs measured</h3>
+          <table class="fr-print-table"><tbody>
+            <tr><td class="fr-print-name">BDN quantity</td><td>${n(c.quantities.bdnQuantityMT, 3, '—')} MT</td></tr>
+            <tr><td class="fr-print-name">Received quantity</td><td>${n(c.quantities.receivedQuantityMT, 3, '—')} MT</td></tr>
+            <tr><td class="fr-print-name">Difference</td>
+              <td class="fr-print-weight">${c.quantities.differenceMT != null ? signed(c.quantities.differenceMT, 3) : '—'} MT
+              ${c.quantities.differencePercent != null ? `(${signed(c.quantities.differencePercent, 3)}%)` : ''}</td></tr>
+            <tr><td class="fr-print-name">Average rate</td>
+              <td>${n(c.timing.averageRateMTPerHour, 1, '—')} MT/h</td></tr>
+          </tbody></table>
+          ${c.bdn2 ? `<h3 class="fr-print-h3">Bunker details (BDN) — ${esc(c.bdn2.label)}</h3>
+          <table class="fr-print-table"><tbody>
+            <tr><td class="fr-print-name">Grade</td><td>${esc(c.bdn2.label)}</td></tr>
+            <tr><td class="fr-print-name">B.D.N. no.</td><td>${esc(c.bdn2.number || '—')}</td></tr>
+            <tr><td class="fr-print-name">Quantity</td><td>${n(c.bdn2.quantityMT, 3, '—')} MT</td></tr>
+            <tr><td class="fr-print-name">Sulphur</td><td>${n(c.bdn2.sulphurPercent, 3, '—')} %</td></tr>
+            <tr><td class="fr-print-name">Density @15°</td><td>${n(c.bdn2.density15, 4, '—')}</td></tr>
+            <tr><td class="fr-print-name">LCV (kJ/kg)</td><td>${n(c.bdn2.lcv, 0, '—')}</td></tr>
+          </tbody></table>
+          <h3 class="fr-print-h3">BDN vs measured — ${esc(c.bdn2.label)}</h3>
+          <table class="fr-print-table"><tbody>
+            <tr><td class="fr-print-name">BDN quantity</td><td>${n(c.quantities2.bdnQuantityMT, 3, '—')} MT</td></tr>
+            <tr><td class="fr-print-name">Received quantity</td><td>${n(c.quantities2.receivedQuantityMT, 3, '—')} MT</td></tr>
+            <tr><td class="fr-print-name">Difference</td>
+              <td class="fr-print-weight">${c.quantities2.differenceMT != null ? signed(c.quantities2.differenceMT, 3) : '—'} MT
+              ${c.quantities2.differencePercent != null ? `(${signed(c.quantities2.differencePercent, 3)}%)` : ''}</td></tr>
+          </tbody></table>` : ''}
+          ${(c.extraBdns || []).map((b, i) => `<h3 class="fr-print-h3">Bunker details (BDN) — extra ${i + 1}: ${esc(b.label)}</h3>
+          <table class="fr-print-table"><tbody>
+            <tr><td class="fr-print-name">B.D.N. no.</td><td>${esc(b.number || '—')}</td></tr>
+            <tr><td class="fr-print-name">Quantity</td><td>${n(b.quantityMT, 3, '—')} MT</td></tr>
+            <tr><td class="fr-print-name">Sulphur</td><td>${n(b.sulphurPercent, 3, '—')} %</td></tr>
+            <tr><td class="fr-print-name">Density @15°</td><td>${n(b.density15, 4, '—')}</td></tr>
+            <tr><td class="fr-print-name">LCV (kJ/kg)</td><td>${n(b.lcv, 0, '—')}</td></tr>
+            <tr><td class="fr-print-name">Received quantity</td><td>${n(c.extraQuantities[i].receivedQuantityMT, 3, '—')} MT${c.extraQuantities[i].gradeTotalMT != null ? ` (all ${esc(b.label)} notes: ${n(c.extraQuantities[i].gradeTotalMT, 3)} MT)` : ''}</td></tr>
+            <tr><td class="fr-print-name">Difference</td>
+              <td class="fr-print-weight">${c.extraQuantities[i].differenceMT != null ? signed(c.extraQuantities[i].differenceMT, 3) : '—'} MT
+              ${c.extraQuantities[i].differencePercent != null ? `(${signed(c.extraQuantities[i].differencePercent, 3)}%)` : ''}</td></tr>
+          </tbody></table>`).join('')}
+        </div>
+      </div>
+      <h3 class="fr-print-h3">Fuel remaining onboard (MT)</h3>
+      <p class="calib-print-note">HFO/VLSFO and MO/MGO/LSMGO are totalled in separate tables — same face as Tank Condition.</p>
+      ${fuelOnboardSectionHtml(c)}
+      <h3 class="fr-print-h3">Remarks</h3>
+      <p class="calib-print-note">${esc(c.remarks || '—')}</p>
+      ${UI.printSignatureBlock()}
+      ${UI.footer(`${c.vessel.name} · bunkering summary · ${c.date || ''}`)}
+    </section>`;
+
+    const beforePage = summaryConditionPage(
+      c.before,
+      'TANK CONDITION BEFORE BUNKERING',
+      'ROB prior to the delivery — from the fuel oil report (or bunker plan before sheet).',
+    );
+    const afterPage = summaryConditionPage(
+      c.after,
+      'TANK CONDITION AFTER BUNKERING',
+      'Tank condition as measured after the delivery — same figures as the after-bunkering report.',
+    );
+
+    return cover + beforePage + afterPage;
+  }
+
+  /* Persist a live pump clock if the iframe/tab is about to unload — navigating
+     away must not clear startedAt; only Stop / Finish / Reset does that. */
+  try {
+    window.addEventListener('pagehide', () => {
+      if (planClockLive()) persistPlanClock({ deferServer: false });
+      flushDrafts();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        if (planClockLive()) persistPlanClock({ deferServer: false });
+        flushDrafts();
+      }
+    });
+  } catch (_) { /* ignore */ }
+
+  async function flushOpenForms() {
+    const b = bundle();
+    const plan = (document.getElementById('bp-save') && view.plan) ? fullPlan() : (b && b.bunkerPlan);
+    const after = (document.getElementById('ba-save') && view.after) ? view.after : (b && b.bunkerAfter);
+    const summary = (document.getElementById('bs-save') && view.summary) ? view.summary : (b && b.bunkerSummary);
+    if (plan) {
+      await saveChainPart('bunker-plan', 'bunkerPlan', { ...plan, updatedAt: plan.updatedAt || new Date().toISOString() }, { snapshot: true, quiet: true });
+    }
+    if (after) {
+      await saveChainPart('bunker-after', 'bunkerAfter', { ...after, updatedAt: after.updatedAt || new Date().toISOString() }, { snapshot: true, quiet: true });
+    }
+    if (summary) {
+      await saveChainPart('bunker-summary', 'bunkerSummary', { ...summary, updatedAt: summary.updatedAt || new Date().toISOString() }, { snapshot: true, quiet: true });
+    }
+  }
+
+  return {
+    renderPlan,
+    flushOpenForms,
+    flushDrafts,
+    renderAfter,
+    renderSummary,
+    planPrintPages,
+    afterPrintPages,
+    summaryPrintPages,
+    view,
+    planClockLive,
+    persistPlanClock,
+    resumeAlerts: startBackgroundMonitor,
+  };
+})();
+
+window.BunkerReports = BunkerReports;
+
+/* Net specific energy typed in MJ/kg (40.5) becomes kJ/kg (40500) as the box is left. */
+if (typeof document !== 'undefined') document.addEventListener('change', (ev) => {
+  const el = ev.target;
+  if (!el || !el.getAttribute) return;
+  const isLcv = el.getAttribute('data-bdn') === 'lcv' || el.getAttribute('data-bdn2') === 'lcv'
+    || /\.lcv$/.test(el.getAttribute('data-xbdn') || '') || /\.lcv$/.test(el.getAttribute('data-pf') || '');
+  if (!isLcv || el.value === '') return;
+  const v = Number(el.value);
+  if (isFinite(v) && v > 0 && v < 100) {
+    el.value = String(Math.round(v * 1000));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+}, true);

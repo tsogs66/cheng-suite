@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en-US" class="aio-suite">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="author" content="Marvin C. Endozo (ts0gs)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="format-detection" content="telephone=no">
+  <title>ChEng AIO</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <!-- No Google Fonts — offline first launch must not block on network CSS. -->
+  <link rel="stylesheet" href="/css/shell.css">
+  <link rel="stylesheet" href="/css/hud-effects.css">
+  <link rel="stylesheet" href="/css/loading-splash.css">
+  <script>window.LOADING_SPLASH_BOOT_LABEL = 'Starting ChEng AIO…';</script>
+  <script src="/js/loading-splash.js"></script>
+  <script defer src="/js/num-align.js"></script>
+  <script defer src="/js/count-up.js"></script>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <script>
+    /* Apply before first paint (same as Voyage Chief). */
+    try {
+      var tm = localStorage.getItem('marine_theme');
+      var mode = 'night';
+      if (tm === 'bright' || tm === 'prism' || tm === 'sailor' || tm === 'astrolabe' || tm === 'night') {
+        mode = (tm === 'sailor') ? 'prism' : tm;
+      }
+      else if (localStorage.getItem('marine_bright') === '1' || localStorage.getItem('vm_bright') === '1') mode = 'bright';
+      if (mode === 'bright') document.documentElement.classList.add('bright');
+      if (mode === 'prism') document.documentElement.classList.add('prism');
+      if (mode === 'astrolabe') document.documentElement.classList.add('astrolabe');
+      document.documentElement.setAttribute('data-theme', mode);
+    } catch (_e) {}
+    /* Android / tablet: bottom nav like Voyage Chief and Tank Chief.
+       Wide Windows desktop keeps the sidebar. */
+    try {
+      var ua = navigator.userAgent || '';
+      var cap = window.Capacitor;
+      var plat = (cap && cap.getPlatform) ? String(cap.getPlatform()) : '';
+      var native = !!(cap && (cap.isNativePlatform ? cap.isNativePlatform() : (plat && plat !== 'web')));
+      var mobileOs = /Android|iPhone|iPad|iPod/i.test(ua) || plat === 'android' || plat === 'ios';
+      if (mobileOs || plat === 'android') {
+        document.documentElement.classList.add('aio-android-nav');
+      }
+      var touch = false;
+      try {
+        touch = window.matchMedia('(hover: none) and (pointer: coarse)').matches
+          || (navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) <= 1100);
+      } catch (_eT) {}
+      var vw = window.innerWidth || 0;
+      var vh = window.innerHeight || 0;
+      var tabletOrPhone = mobileOs || native || touch
+        || (Math.min(vw, vh) > 0 && Math.min(vw, vh) <= 900)
+        || (vw > 0 && vw <= 1180);
+      if (tabletOrPhone) {
+        document.documentElement.classList.add('use-bottom-nav');
+      }
+      if (!mobileOs && !native && vw >= 1181 && Math.min(vw, vh) > 900) {
+        document.documentElement.classList.remove('use-bottom-nav');
+      }
+    } catch (_e) {}
+    /* Keep phone/tablet browsers on the mobile layout (block “Desktop site”). */
+    (function lockMobileViewport() {
+      const WANT = 'width=device-width, initial-scale=1, viewport-fit=cover';
+      function apply() {
+        let meta = document.querySelector('meta[name="viewport"]');
+        if (!meta) {
+          meta = document.createElement('meta');
+          meta.setAttribute('name', 'viewport');
+          document.head.appendChild(meta);
+        }
+        if (meta.getAttribute('content') !== WANT) meta.setAttribute('content', WANT);
+      }
+      apply();
+      try {
+        const mo = new MutationObserver(apply);
+        mo.observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['content', 'name'] });
+      } catch (_e) {}
+      setInterval(apply, 1500);
+    })();
+  </script>
+  <style>
+    html, body { margin: 0; background: #0a1420; color: #e9e4d6; font-family: Georgia, "Times New Roman", serif; }
+    html.bright, html.bright body { background: #efebe3; color: #122238; }
+    html.prism, html.prism body { background: #041618; color: #e6fff8; }
+    html.astrolabe, html.astrolabe body { background: #0a0c16; color: #f4efe4; }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <button type="button" class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
+      <div class="brand" id="brandHome" role="button" tabindex="0" title="Back to Home" aria-label="Back to Home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <strong>ChEng AIO</strong>
+          <span>Marine Engineer Suite</span>
+        </div>
+      </div>
+      <div class="vessel-switcher" id="vesselSwitcher">
+        <label for="activeVessel">Vessel</label>
+        <div class="vessel-switcher-row">
+          <select id="activeVessel" aria-label="Vessel list"></select>
+          <button type="button" class="btn primary" id="btnLoadVesselData" title="Open the selected ship's latest voyage log, tank readings, notes, and other records">Load vessel data</button>
+        </div>
+      </div>
+      <div class="topbar-meta" id="topbarMeta">
+        <span id="healthDot" class="health-dot" title="Server"></span>
+        <button type="button" class="icon-btn nav-fab" id="navFab" aria-label="Open menu" aria-expanded="false" title="Menu" hidden>☰</button>
+        <div class="topbar-id">
+          <span class="registered" id="headerRegistered"></span>
+          <span class="ver" id="headerVersion"></span>
+        </div>
+        <button type="button" class="theme-toggle theme-topbar" data-theme-toggle aria-pressed="false" title="Day / bright mode for sunlight">Bright</button>
+      </div>
+    </header>
+    <div class="watch-strip" id="watchStrip" hidden aria-label="Watch strip"></div>
+    <div class="body">
+      <aside class="sidebar" id="sidebar">
+        <nav class="nav" id="mainNav">
+          <button type="button" class="nav-item active" data-module="home">Home</button>
+          <button type="button" class="nav-item" data-module="voyage">Voyage</button>
+          <button type="button" class="nav-item" data-module="tanks">Tanks</button>
+          <button type="button" class="nav-item" data-module="bunkerplan">Consumption Plan</button>
+          <button type="button" class="nav-item" data-module="bunkeringplan">Bunkering Plan</button>
+          <button type="button" class="nav-item" data-module="eca">ECA</button>
+          <button type="button" class="nav-item" data-module="eorb">e-ORB</button>
+          <button type="button" class="nav-item" data-module="performance">Performance</button>
+          <button type="button" class="nav-item" data-module="spares">Spares</button>
+          <button type="button" class="nav-item" data-module="notes">Notes</button>
+          <button type="button" class="nav-item" data-module="vessel">Vessel Setup</button>
+          <button type="button" class="nav-item" data-module="backup">Backup &amp; Sync</button>
+          <button type="button" class="nav-item" data-module="license">License</button>
+          <button type="button" class="nav-item" data-module="about">About</button>
+        </nav>
+        <div class="sidebar-meta" id="sidebarFooter">
+          <!-- Day/night sits with the version and the licensed email: three
+               things you set once and then read, rather than a control in the
+               top bar competing with the vessel switcher. -->
+          <button type="button" class="theme-toggle theme-sidebar" data-theme-toggle aria-pressed="false" title="Day / bright mode for sunlight">Bright</button>
+          <div class="ver" id="sidebarVersion"></div>
+          <div class="registered" id="sidebarRegistered"></div>
+          <div class="author" id="sidebarAuthor"></div>
+        </div>
+      </aside>
+      <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+      <main class="main" id="main" tabindex="-1"></main>
+    </div>
+
+    <nav class="bottom-nav" id="bottomNav" aria-label="Primary modules">
+      <button type="button" class="bottom-item" data-module="voyage" aria-label="Voyage">
+        <span class="bn-ic" aria-hidden="true">🧭</span><span>Voyage</span>
+      </button>
+      <button type="button" class="bottom-item" data-module="tanks" aria-label="Tanks">
+        <span class="bn-ic" aria-hidden="true">⛽</span><span>Tanks</span>
+      </button>
+      <button type="button" class="bottom-item" data-module="bunkerplan" aria-label="Consumption Plan">
+        <span class="bn-ic" aria-hidden="true">📈</span><span>Cons Plan</span>
+      </button>
+      <button type="button" class="bottom-item" data-module="bunkeringplan" aria-label="Bunkering Plan">
+        <span class="bn-ic" aria-hidden="true">📥</span><span>Bnk Plan</span>
+      </button>
+      <button type="button" class="bottom-item" data-module="eorb" aria-label="e-ORB">
+        <span class="bn-ic" aria-hidden="true">📕</span><span>e-ORB</span>
+      </button>
+      <button type="button" class="bottom-item" data-module="performance" aria-label="Performance">
+        <span class="bn-ic" aria-hidden="true">📊</span><span>Perf</span>
+      </button>
+      <button type="button" class="bottom-item" data-module="more" aria-label="More">
+        <span class="bn-ic" aria-hidden="true">⋯</span><span>More</span>
+      </button>
+    </nav>
+    <div class="bn-more-sheet" id="bnMoreSheet" aria-hidden="true">
+      <div class="bn-more-panel" role="dialog" aria-label="More modules">
+        <div class="bn-more-handle" aria-hidden="true"></div>
+        <div class="bn-more-title">More</div>
+        <div class="bn-more-grid">
+          <button type="button" class="bn-more-item" data-module="notes">
+            <span class="bn-ic" aria-hidden="true">📝</span><span>Notes</span>
+          </button>
+          <button type="button" class="bn-more-item active" data-module="home">
+            <span class="bn-ic" aria-hidden="true">🏠</span><span>Home</span>
+          </button>
+          <button type="button" class="bn-more-item" data-module="spares">
+            <span class="bn-ic" aria-hidden="true">🔩</span><span>Spares</span>
+          </button>
+          <button type="button" class="bn-more-item" data-module="vessel">
+            <span class="bn-ic" aria-hidden="true">🚢</span><span>Setup</span>
+          </button>
+          <button type="button" class="bn-more-item" data-module="eca">
+            <span class="bn-ic" aria-hidden="true">🌊</span><span>ECA</span>
+          </button>
+          <button type="button" class="bn-more-item" data-module="backup">
+            <span class="bn-ic" aria-hidden="true">⇅</span><span>Backup &amp; Sync</span>
+          </button>
+          <button type="button" class="bn-more-item" data-module="license">
+            <span class="bn-ic" aria-hidden="true">🔑</span><span>License</span>
+          </button>
+          <button type="button" class="bn-more-item" data-module="about">
+            <span class="bn-ic" aria-hidden="true">ℹ</span><span>About</span>
+          </button>
+        </div>
+        <button type="button" class="theme-toggle bn-more-theme" data-theme-toggle aria-pressed="false" title="Colour theme">Bright</button>
+        <button type="button" class="theme-toggle bn-more-theme bn-more-fs" id="bnMoreFullscreen" aria-pressed="false" hidden title="Hide the Android status and navigation bars. Swipe from the edge to bring them back.">Full screen: Off</button>
+      </div>
+    </div>
+    <!-- The AIO's one piece of chrome inside a module. It replaces two floating
+         buttons that sat on top of Voyage Chief's and Tank Chief's own header
+         rows, and it carries the thing a module cannot tell you: which vessel
+         the suite currently has active. -->
+    <div class="aio-return-fabs" id="aioReturnFabs" hidden>
+      <span class="aio-embed-module" id="aioEmbedModule"></span>
+      <span class="aio-embed-vessel" id="aioEmbedVessel" title="Active vessel"></span>
+      <button type="button" class="theme-toggle aio-theme-fab" data-theme-toggle aria-pressed="false" title="Day / bright mode for sunlight">Bright</button>
+      <button type="button" class="aio-home-fab" id="aioHomeFab" title="Back to Dashboard" aria-label="Back to Dashboard">‹ Dashboard</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="/js/version.js"></script>
+  <script src="/js/theme.js"></script>
+  <script src="/js/print-bridge.js"></script>
+  <script src="/js/ui-zoom.js"></script>
+  <script src="/js/save-file.js"></script>
+  <script src="/js/backup-extra.js"></script>
+  <script src="/js/lan-compare.js"></script>
+  <script src="/js/lan-sync-all.js"></script>
+  <script src="/js/vessel-key.js"></script>
+  <script src="/js/file-viewer.js"></script>
+  <script src="/js/camera-capture.js"></script>
+  <script src="/js/progress.js"></script>
+  <script src="/js/image-cutout.js"></script>
+  <script src="/js/signature-pad.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/bridge.js"></script>
+  <script src="/js/license-config.js"></script>
+  <script src="/js/license.js"></script>
+  <script src="/js/voyage-bridge.js"></script>
+  <script src="/tanks/js/calc.js"></script>
+  <script src="/tanks/js/fuel-report-core.js"></script>
+  <script src="/js/tank-graphics.js"></script>
+  <script src="/js/home-dashboard.js?v=4"></script>
+  <script src="/js/flag-registry.js"></script>
+  <script src="/js/perf-calc.js"></script>
+  <script src="/js/modules/home.js"></script>
+  <script src="/js/modules/vessel.js"></script>
+  <script src="/js/modules/backup.js"></script>
+  <script src="/js/modules/performance.js"></script>
+  <script src="/js/modules/voyage.js"></script>
+  <script src="/js/modules/spares.js"></script>
+  <script src="/js/modules/eca.js"></script>
+  <script src="/js/watch-strip.js"></script>
+  <script src="/js/modules/bunkerplan.js"></script>
+  <script src="/js/modules/bunkeringplan.js"></script>
+  <script src="/js/modules/eorb.js"></script>
+  <script src="/js/modules/license.js"></script>
+  <script src="/js/modules/about-guide.js"></script>
+  <script src="/js/modules/about.js"></script>
+  <script src="/js/note-reminders.js"></script>
+  <script src="/js/modules/notes.js"></script>
+  <script src="/js/clock-picker.js"></script>
+  <script src="/js/shell.js"></script>
+  <script>try{ ChengClockPicker && ChengClockPicker.install(); }catch(_e){}</script>
+</body>
+</html>
