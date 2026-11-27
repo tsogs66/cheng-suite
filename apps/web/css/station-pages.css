@@ -77,6 +77,8 @@ html.station .scroll-x {
   overflow-x: auto;
   overflow-y: visible;
   max-width: 100%;
+  width: 100%;
+  min-width: 0;
   -webkit-overflow-scrolling: touch;
 }
 html.station table.fr-sheet,
@@ -287,20 +289,92 @@ html.station button.primary {
 
 .fr-more-btn { display: none; }
 
-/* The Plan / Monitoring / After / Summary strip sticks to the top.
-   Column titles stick just under it, so a scroll does not hide them. */
+/* The Plan / Monitoring / After / Summary strip sticks to the top of the page.
+   Column titles sit above row 1, then stick just under that strip. */
 html.station .bk-nav {
   z-index: 8;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
   background: #0b1218;
 }
 html.station.bright .bk-nav { background: #e6e0d2; }
-html.station:has(.bk-nav) table thead th {
-  top: 100px;
+html.station:has(.bk-nav) .scroll-x thead th,
+html.station:has(.bk-nav) .table-scroll thead th {
+  top: 56px;
 }
 
 /* Tablet and Windows: the same columns as v1, with the station colours.
-   Headers wrap so a column stays near its v1 width. A wide sheet scrolls in .scroll-x. */
+   Headers wrap so a column stays near its v1 width. A wide sheet scrolls with the page. */
 @media (min-width: 600px) {
+  /* The sheet frame and the panel both clip, so a title offset lands on the
+     first tanks and the sideways bar never shows. Let the sheet spill into
+     the page scroller, which already sits under the tab strip. */
+  html.station .fr-section.form-panel {
+    overflow: visible;
+    width: max-content;
+    max-width: none;
+  }
+  html.station .fr-section > .section-title,
+  html.station .fr-section > .hint {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    width: fit-content;
+    max-width: calc(100vw - 36px);
+  }
+  html.station .table-scroll,
+  html.station .scroll-x {
+    overflow: visible;
+    width: auto;
+    max-width: none;
+  }
+  /* A tablet keeps the sheet in the page, under the tab strip. The page
+     itself scrolls down and sideways, so the titles can sit on the strip. */
+  html.station,
+  html.station body {
+    height: 100%;
+    overflow: hidden;
+  }
+  html.station .app-shell {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+  html.station .workspace {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+  html.station .main {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    scrollbar-width: auto;
+    scrollbar-color: #e2a84a #1a2834;
+  }
+  html.station .main:has(table.fr-sheet) {
+    overflow-x: scroll;
+    /* The system bar fades on a tablet. A brass edge stays, so a cut-off
+       column reads as something you can slide, and it goes once you reach the end. */
+    box-shadow: inset -18px 0 14px -8px rgba(226, 168, 74, 0.9);
+    animation-name: fr-sheet-edge;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(x self);
+  }
+  html.station .main::-webkit-scrollbar {
+    height: 14px;
+    width: 14px;
+  }
+  html.station .main::-webkit-scrollbar-track { background: #1a2834; }
+  html.station .main::-webkit-scrollbar-thumb {
+    background: #e2a84a;
+    border-radius: 7px;
+  }
   html.station .scroll-x > table.fr-sheet thead th,
   html.station table.fr-sheet thead th {
     white-space: normal;
@@ -318,6 +392,21 @@ html.station:has(.bk-nav) table thead th {
   html.station table.fr-table input:not([type="checkbox"]),
   html.station table.fr-table select {
     min-height: 44px;
+  }
+}
+@keyframes fr-sheet-edge {
+  from { box-shadow: inset -18px 0 14px -8px rgba(226, 168, 74, 0.9); }
+  to { box-shadow: inset 0 0 0 transparent; }
+}
+@media print {
+  html.station,
+  html.station body,
+  html.station .app-shell,
+  html.station .workspace,
+  html.station .main {
+    height: auto;
+    max-height: none;
+    overflow: visible;
   }
 }
 @media (pointer: coarse) {
