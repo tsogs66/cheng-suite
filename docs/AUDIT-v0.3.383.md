@@ -19,6 +19,15 @@ Actions that went past opening the screen:
 | Voyage Print & Save with no summary open | — | Was a silent return. Now toasts “Open a voyage summary before printing”. | Fixed on this branch |
 | Sounding sheet at 1366 and 800 | 113×38 px box, table 1304 px, word ULLAGE | After the fix: 120×44 at 1366, table 1276 px in a 1366 px page, no sideways scroll. At 800 the box is 95×44, ULLAGE still fits, and the page scrolls sideways (table 1047 px). | Fixed on this branch |
 
+## Device bugs reported on v0.3.383
+
+| Bug | Root cause | Fix |
+| --- | --- | --- |
+| The program seems to reload | Voyage, embedded in the suite, registered `sw.js` and posted `SKIP_WAITING` whenever a worker was waiting. That takes control of the frame and the WebView loads it again. A license activation also calls `location.reload` once, on purpose, after a successful activate. Home itself does not reload: one navigation entry over 6 seconds. | An embedded Voyage frame no longer registers a worker, and a waiting worker is not activated on every ordinary load. |
+| Log entry cannot scroll after flowmeter data | `html.station body { overflow: hidden }` was applied to every page with class `station`. Voyage Chief and the suite shell scroll the document. Tank Chief is the one with `.app-shell` and a scrolling `.main`. Revealing the flowmeter rows made the form taller than the window, and the body could not move. A short iframe was also marked `keyboard-open` whenever the layout height was under 560 px. | The overflow lock is only `html.station:has(.app-shell)`. Closing the flowmeter box clears `keyboard-open`. A keyboard is only a visual viewport shorter than the layout viewport. |
+| Scroll and zoom | Same overflow lock. The zoom control (`ui-zoom.js`) was already on the shell and Voyage; it sets `documentElement.style.zoom` and the % button returns to 100%. | Confirmed: after the flowmeter box closes, the log scrolls, zoom 125% returns to 100%. Windows 1366 keeps the top menu. Phone, tablet portrait, and tablet landscape keep a scrolling sheet. |
+| Prints must match v1 | Tank, bunkering, and consumption print functions match tank-management except the annex In use column. The log-entry card had four black crop marks v1 does not print. | Crop marks removed from both Voyage copies. |
+
 ## Fixes on this branch
 
 - Sounding sheet uses v1 column rules again: `table.fr-sheet { width: 100% }`, number boxes at least 58 px (temp 46, SG 68), method select at least 7.5 em so ULLAGE is fully visible, 44 px row height from 600 px up. The 100 px title offset is gone; titles sit at 56 px, under the tab strip, and the first row is not covered. A window narrower than the sheet scrolls the page sideways.

@@ -336,20 +336,23 @@ html.station:has(.bk-nav) .table-scroll thead th {
     width: auto;
     max-width: none;
   }
-  html.station,
-  html.station body { height: 100%; overflow: hidden; }
-  html.station .app-shell {
+  /* Voyage Chief and the suite shell also carry class station, and they scroll
+     the document. Only Tank Chief has .app-shell. Locking every station body
+     made a log entry unscrollable once the flowmeter rows appeared. */
+  html.station:has(.app-shell),
+  html.station:has(.app-shell) body { height: 100%; overflow: hidden; }
+  html.station:has(.app-shell) .app-shell {
     height: 100dvh;
     max-height: 100dvh;
     overflow: hidden;
   }
-  html.station .workspace {
+  html.station:has(.app-shell) .workspace {
     flex: 1;
     min-height: 0;
     min-width: 0;
     overflow: hidden;
   }
-  html.station .main {
+  html.station:has(.app-shell) .main {
     flex: 1;
     min-height: 0;
     min-width: 0;
@@ -357,7 +360,7 @@ html.station:has(.bk-nav) .table-scroll thead th {
     scrollbar-width: auto;
     scrollbar-color: #e2a84a #1a2834;
   }
-  html.station .main:has(table.fr-sheet) { overflow-x: auto; }
+  html.station:has(.app-shell) .main:has(table.fr-sheet) { overflow-x: auto; }
 }
 @media (min-width: 600px) {
   html.station .scroll-x > table.fr-sheet thead th,

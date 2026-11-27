@@ -18881,8 +18881,9 @@ document.getElementById('tabs').addEventListener('click', (e)=>{
       root.style.setProperty('--vv-height', ((visH > 0 ? visH : layoutH) || 0) + 'px');
       root.style.setProperty('--vv-width', ((vv && vv.width) ? vv.width : (window.innerWidth || 0)) + 'px');
       /* Keyboard: visual viewport shorter than layout, or layout shorter than screen. */
-      const keyboardOpen = (vv && layoutH > 0 && (layoutH - visH) > 100)
-        || (screenMin > 560 && layoutH > 0 && layoutH <= 560);
+      /* A short iframe on a large screen is not a keyboard. Only a visual
+         viewport that is shorter than the layout viewport counts. */
+      const keyboardOpen = !!(vv && layoutH > 0 && (layoutH - visH) > 100);
       /* True short device (phone landscape) — never treat keyboard-shrunk tablet as short. */
       const short = screenMin > 0 && screenMin <= 560
         && layoutH > 0 && layoutH <= 560
@@ -20156,8 +20157,6 @@ function buildLogEntryDataHalfHtml(){
   }).join('');
 
   return `<div class="pr-led-inner">
-      <i class="pr-card-mark pr-card-tl" data-card-mark="tl" aria-hidden="true"></i><i class="pr-card-mark pr-card-tr" data-card-mark="tr" aria-hidden="true"></i>
-      <i class="pr-card-mark pr-card-bl" data-card-mark="bl" aria-hidden="true"></i><i class="pr-card-mark pr-card-br" data-card-mark="br" aria-hidden="true"></i>
       <div class="pr-led-title">LOG ENTRY DATA CARD</div>
       <div class="pr-led-sub">Voyage Chief - ${vessel}</div>
 
@@ -20314,7 +20313,6 @@ html, body{
   box-sizing:border-box;
 }
 .pr-led-inner{
-  position:relative;
   width:100%;
   height:auto;
   min-height:0;
@@ -20326,11 +20324,6 @@ html, body{
   line-height:1.15;
   --led-row: 4.2mm;
 }
-.pr-card-mark{
-  position:absolute; display:block; width:4mm; height:4mm; background:#000;
-  -webkit-print-color-adjust:exact; print-color-adjust:exact;
-}
-.pr-card-tl{ left:0; top:0; } .pr-card-tr{ right:0; top:0; } .pr-card-bl{ left:0; bottom:0; } .pr-card-br{ right:0; bottom:0; }
 .pr-led-title{
   text-align:center; font-size:10.5pt; font-weight:700; letter-spacing:0.04em;
   margin:0 0 0.35mm; flex:0 0 auto;
@@ -28270,6 +28263,9 @@ function closeFmQuickDialog(){
   if (!overlay) return;
   overlay.classList.remove('open');
   overlay.hidden = true;
+  const active = document.activeElement;
+  if (active && overlay.contains(active) && typeof active.blur === 'function') active.blur();
+  document.documentElement.classList.remove('keyboard-open');
 }
 /** Keep the focused flowmeter field above the tablet numpad. */
 function keepFmQuickFieldVisible(el){
@@ -32632,12 +32628,14 @@ window.addEventListener('offline', renderSyncUi);
 
 function registerServiceWorker(){
   if (!('serviceWorker' in navigator)) return;
+  /* Inside the suite the shell owns the page. A worker in this frame that
+     calls skipWaiting on every load takes control and the WebView reloads. */
+  if (document.documentElement.classList.contains('chengaio-embed')) return;
   if (location.protocol === 'file:'){
     console.warn('Service worker requires http(s). Serve this folder with a local web server for offline install.');
     return;
   }
   navigator.serviceWorker.register('./sw.js').then((reg)=>{
-    if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
     reg.addEventListener('updatefound', ()=>{
       const w = reg.installing;
       if (!w) return;
