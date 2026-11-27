@@ -23,6 +23,15 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           npm version "$TAG" --no-git-tag-version --allow-same-version
+          node <<'JS'
+          const fs = require('fs');
+          const v = process.env.GITHUB_REF_NAME.replace(/^v/, '');
+          const p = 'apps/web/js/version.js';
+          let s = fs.readFileSync(p, 'utf8');
+          s = s.replace(/CHENG_PRO_VERSION = '[^']+'/, "CHENG_PRO_VERSION = '" + v + "'");
+          if (!s.includes("CHENG_PRO_VERSION = '" + v + "'")) process.exit(1);
+          fs.writeFileSync(p, s);
+          JS
       - run: npx electron-builder --win --publish never
       - uses: actions/upload-artifact@v4
         with:
@@ -55,6 +64,15 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           npm version "$TAG" --no-git-tag-version --allow-same-version
+          node <<'JS'
+          const fs = require('fs');
+          const v = process.env.GITHUB_REF_NAME.replace(/^v/, '');
+          const p = 'apps/web/js/version.js';
+          let s = fs.readFileSync(p, 'utf8');
+          s = s.replace(/CHENG_PRO_VERSION = '[^']+'/, "CHENG_PRO_VERSION = '" + v + "'");
+          if (!s.includes("CHENG_PRO_VERSION = '" + v + "'")) process.exit(1);
+          fs.writeFileSync(p, s);
+          JS
       - run: npm run android:prepare
       - run: npx cap add android
       - run: npx cap sync android
