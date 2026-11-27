@@ -1418,6 +1418,44 @@
       return Promise.resolve(A.persist({ plan: finalize(ctx.plan), history: ctx.history })).catch((e) => console.warn('consumption plan persist', e));
     }
     function scheduleSave() { clearTimeout(ctx.timer); ctx.timer = setTimeout(persistNow, 400); }
+    function showCalc(on) {
+      let el = host.querySelector('[data-cp="busy"]');
+      if (!el) {
+        el = document.createElement('div');
+        el.dataset.cp = 'busy';
+        el.setAttribute('role', 'status');
+        el.textContent = 'Calculating…';
+        el.style.cssText = 'position:sticky;top:0;z-index:30;margin:0 0 8px;padding:6px 10px;background:#13202b;color:#e2a84a;border:1px solid #e2a84a;border-radius:4px;font-size:13px;opacity:0;transition:opacity 0s linear 300ms;';
+        host.insertBefore(el, host.firstChild);
+      }
+      if (on) {
+        el.hidden = false;
+        el.style.opacity = '0';
+        requestAnimationFrame(() => { el.style.opacity = '1'; });
+      } else {
+        el.style.opacity = '0';
+        el.hidden = true;
+      }
+    }
+    /* Typing used to run the full chain and rewrite every result table on each
+       input event. Wait until the finger pauses, yield so the page can paint,
+       then recalc. The banner stays invisible for 300ms, so a short pass never
+       flashes it and a long one shows "Calculating…" while the work runs. */
+    function scheduleSync() {
+      clearTimeout(ctx._syncTimer);
+      ctx._syncTimer = setTimeout(() => runHeavy(syncAll), 250);
+    }
+    function runHeavy(fn) {
+      showCalc(true);
+      requestAnimationFrame(() => setTimeout(() => {
+        const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        try { fn(); }
+        finally {
+          ctx._lastSyncMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
+          showCalc(false);
+        }
+      }, 0));
+    }
 
     /* ---- drawing ---- */
     function gradeOptions(selected) {
@@ -2429,14 +2467,14 @@
       if (t.dataset.cp === 'voyageNo') { ctx.plan.voyageNo = t.value.trim(); scheduleSave(); return; }
       if (t.dataset.cp === 'remarks') { ctx.plan.remarks = t.value; scheduleSave(); return; }
       if (t.dataset.cp === 'history-search') { renderHistory(); return; }
-      if (t.dataset.cp === 'legTitle') { secAt(secIndexOf(t)).legTitle = t.value; syncAll(); scheduleSave(); return; }
+      if (t.dataset.cp === 'legTitle') { secAt(secIndexOf(t)).legTitle = t.value; scheduleSync(); scheduleSave(); return; }
       if (t.dataset.ov !== undefined && t.dataset.ov !== 'miscGrade') {
         const sec = secAt(secIndexOf(t)); sec.over = sec.over || cleanOver(null, ctx.plan.fuelSlots); const k = t.dataset.ov; const v = num(t.value);
         if (k === 'speed') sec.over.speed = v > 0 ? v : null;
         else if (k === 'sea' || k === 'port') sec.over[k][Number(t.dataset.s)] = v != null && v >= 0 ? v : null;
         else if (k === 'misc') { sec.over.misc = v > 0 ? v : null; if (sec.over.misc && !sec.over.miscGrade) { sec.over.miscGrade = miscGradeOf(sec) || defaultEcaFuel(ctx.fuels) || ''; const gs = t.closest('[data-legfig]') && t.closest('[data-legfig]').querySelector('[data-ov="miscGrade"]'); if (gs && sec.over.miscGrade) gs.value = sec.over.miscGrade; } }
-        followProfile(); syncAll();
-        const sig = gradesSignature(); if (sig !== ctx._sig) { ctx._sig = sig; renderGrid(); }
+        followProfile(); scheduleSync();
+        const sig = gradesSignature(); if (sig !== ctx._sig) { ctx._sig = sig; runHeavy(renderGrid); }
         scheduleSave(); return;
       }
       if (t.dataset.canal !== undefined) { const c = t.dataset.canal; const x = (ctx.plan.canal[c] = ctx.plan.canal[c] || { hours: null, fee: null }); const v = num(t.value); x[t.dataset.ck] = v > 0 ? v : null; renderScen(false); scheduleSave(); return; }
@@ -2455,18 +2493,28 @@
             if (port) {
               leg[key] = port.id;
               leg.grp = null; leg.keepWhole = false;
-              if (autoDistance(leg)) {
-                const k = autoSplitAt(rowSec, Number(tr.dataset.row));
-                renderGrid(); scheduleSave();
+              scheduleSave();
+              const row = Number(tr.dataset.row);
+              runHeavy(() => {
+                if (!autoDistance(leg)) return;
+                const k = autoSplitAt(rowSec, row);
+                renderGrid();
                 const fuelNote = ecaFuelNow() ? ': Fuel 1 is ' + ecaFuelNow() + ' on the ECA lines' : '';
                 toast(k ? 'Distance filled and the line split into ' + k + ' lines at the ECA' + fuelNote : 'Distance filled from the sea lanes (planning estimate)');
-                return;
-              }
+              });
+              return;
             } else {
               if (leg[key]) { leg[key] = null; if (leg.distAuto) { leg.distAuto = false; leg.seaNote = ''; leg.ecaNm = null; leg.ecaZones = ''; leg.ecaRuns = null; } }
               const dl = $('#cp-ports');
               if (dl) {
-                const res = t.value.trim().length >= 2 ? ctx.sea.ports.search(t.value, { limit: 12 }) : [];
+                const q = t.value.trim();
+              if (!ctx._portCache) ctx._portCache = new Map();
+              let res = q.length >= 2 ? ctx._portCache.get(q) : [];
+              if (q.length >= 2 && !res) {
+                res = ctx.sea.ports.search(q, { limit: 12 });
+                if (ctx._portCache.size > 48) ctx._portCache.clear();
+                ctx._portCache.set(q, res);
+              }
                 res.forEach((p) => ctx.portMap.set(portLabel(p), p));
                 dl.innerHTML = res.map((p) => `<option value="${esc(portLabel(p))}"></option>`).join('');
               }
@@ -2486,8 +2534,8 @@
             if (f === 'distance' || f === 'speed') { if (!leg.port) { leg.daysManual = false; leg.days = null; } }
           }
         }
-        syncAll();
-        if (f === 'daily') { const sig = gradesSignature(); if (sig !== ctx._sig) { ctx._sig = sig; renderGrid(); } }
+        scheduleSync();
+        if (f === 'daily') { const sig = gradesSignature(); if (sig !== ctx._sig) { ctx._sig = sig; runHeavy(renderGrid); } }
         scheduleSave();
       } else if (t.dataset.sf) {
         const key = normGrade(t.dataset.grade);
@@ -2495,7 +2543,7 @@
         if (!sec.stocks) sec.stocks = {};
         const st = sec.stocks[key] || (sec.stocks[key] = { label: t.dataset.grade });
         st[t.dataset.sf] = num(t.value);
-        syncAll(); scheduleSave();
+        scheduleSync(); scheduleSave();
       }
     });
     host.addEventListener('change', (e) => {
@@ -2503,15 +2551,15 @@
       if (t.tagName === 'SELECT' || t.type === 'checkbox' || (t.dataset && t.dataset.cp === 'date')) rememberUndo();
       if (t.dataset.cp === 'date') { ctx.plan.date = t.value; scheduleSave(); return; }
       if (t.dataset.cp === 'depart') { rememberUndo(); ctx.plan.depart = t.value || ''; const b = $('[data-cp="pvaBody"]'); if (b) b.innerHTML = pvaHtml(); scheduleSave(); return; }
-      if (t.dataset.ov === 'miscGrade') { const sec = secAt(secIndexOf(t)); sec.over = sec.over || cleanOver(null, ctx.plan.fuelSlots); sec.over.miscGrade = t.value; ctx._sig = gradesSignature(); renderGrid(); scheduleSave(); return; }
-      if (t.dataset.cp === 'cond') { secAt(secIndexOf(t)).cond = condOf(t.value); renderGrid(); scheduleSave(); return; }
+      if (t.dataset.ov === 'miscGrade') { const sec = secAt(secIndexOf(t)); sec.over = sec.over || cleanOver(null, ctx.plan.fuelSlots); sec.over.miscGrade = t.value; ctx._sig = gradesSignature(); scheduleSave(); runHeavy(renderGrid); return; }
+      if (t.dataset.cp === 'cond') { secAt(secIndexOf(t)).cond = condOf(t.value); scheduleSave(); runHeavy(renderGrid); return; }
       if (t.dataset.seaApproach !== undefined) {
         const v = Number(t.value); ctx.plan.sea.approachNm = v > 0 ? Math.min(100, v) : 0;
-        const n = recalcAuto(); renderGrid(); scheduleSave(); if (n) toast(n + ' distance' + (n === 1 ? '' : 's') + ' recalculated'); return;
+        scheduleSave(); runHeavy(() => { const n = recalcAuto(); renderGrid(); if (n) toast(n + ' distance' + (n === 1 ? '' : 's') + ' recalculated'); }); return;
       }
-      if (t.dataset.seaGreatcircle !== undefined) { ctx.plan.sea.greatCircle = !!t.checked; const n = recalcAuto(); renderGrid(); scheduleSave(); if (n) toast(n + ' distance' + (n === 1 ? '' : 's') + ' recalculated'); return; }
-      if (t.dataset.seaMinecas !== undefined) { ctx.plan.sea.minEca = !!t.checked; const n = recalcAuto(); renderGrid(); scheduleSave(); toast(n ? n + ' route' + (n === 1 ? '' : 's') + ' worked again' + (t.checked ? ' with fewer miles in the ECA' : '') : 'Pick From and To ports to see the effect'); return; }
-      if (t.dataset.seaMinecapct !== undefined) { const v = Number(t.value); ctx.plan.sea.minEcaPct = v > 0 ? Math.min(50, v) : 10; if (ctx.plan.sea.minEca) { const n = recalcAuto(); renderGrid(); if (n) toast(n + ' route' + (n === 1 ? '' : 's') + ' worked again'); } scheduleSave(); return; }
+      if (t.dataset.seaGreatcircle !== undefined) { ctx.plan.sea.greatCircle = !!t.checked; scheduleSave(); runHeavy(() => { const n = recalcAuto(); renderGrid(); if (n) toast(n + ' distance' + (n === 1 ? '' : 's') + ' recalculated'); }); return; }
+      if (t.dataset.seaMinecas !== undefined) { ctx.plan.sea.minEca = !!t.checked; scheduleSave(); runHeavy(() => { const n = recalcAuto(); renderGrid(); toast(n ? n + ' route' + (n === 1 ? '' : 's') + ' worked again' + (t.checked ? ' with fewer miles in the ECA' : '') : 'Pick From and To ports to see the effect'); }); return; }
+      if (t.dataset.seaMinecapct !== undefined) { const v = Number(t.value); ctx.plan.sea.minEcaPct = v > 0 ? Math.min(50, v) : 10; scheduleSave(); if (ctx.plan.sea.minEca) runHeavy(() => { const n = recalcAuto(); renderGrid(); if (n) toast(n + ' route' + (n === 1 ? '' : 's') + ' worked again'); }); return; }
       if (t.dataset.seaPilotsplit !== undefined) { ctx.plan.sea.pilotSplit = !!t.checked; scheduleSave(); return; }
       if (t.dataset.seaPilotnm !== undefined) { const v = Number(t.value); ctx.plan.sea.pilotNm = v > 0 ? Math.min(50, v) : 10; scheduleSave(); return; }
       if (t.dataset.seaAutosplit !== undefined) { ctx.plan.sea.autoSplit = !!t.checked; scheduleSave(); return; }
@@ -2525,24 +2573,24 @@
         const i = list.indexOf(id);
         const on = isEca && !notYet ? !t.checked : t.checked; // an unticked ECA zone in force is switched off
         if (on && i < 0) list.push(id); else if (!on && i >= 0) list.splice(i, 1);
-        const n = recalcAuto(); renderGrid(); scheduleSave();
-        if (n) toast(n + ' distance' + (n === 1 ? '' : 's') + ' recalculated');
+        scheduleSave();
+        runHeavy(() => { const n = recalcAuto(); renderGrid(); if (n) toast(n + ' distance' + (n === 1 ? '' : 's') + ' recalculated'); });
         return;
       }
       const tr = t.closest && t.closest('tr[data-row]');
       if (!tr || !t.dataset.f) return;
       const leg = secAt(secIndexOf(t)).legs[Number(tr.dataset.row)];
       if (!leg) return;
-      if (t.dataset.f === 'mode') { if (t.value === '__typed') return; leg.mode = t.value; leg.auto = true; renderGrid(); scheduleSave(); return; }
+      if (t.dataset.f === 'mode') { if (t.value === '__typed') return; leg.mode = t.value; leg.auto = true; scheduleSave(); runHeavy(renderGrid); return; }
       if (t.dataset.f === 'port') {
         leg.port = !!t.checked;
         if (!leg.port) { leg.daysManual = false; leg.days = null; }
         if (leg.mode) leg.mode = '';
         { const sec2 = secAt(secIndexOf(t)); refreshProfile(); leg.auto = true; leg.mode = defaultMode(null, leg, ctx.profile, secCond(sec2)); }
-        renderGrid(); scheduleSave();
+        scheduleSave(); runHeavy(renderGrid);
       } else if (t.dataset.f === 'grade') {
         leg.fuels[Number(t.dataset.s)].grade = t.value;
-        ctx._sig = gradesSignature(); renderGrid(); scheduleSave();
+        ctx._sig = gradesSignature(); scheduleSave(); runHeavy(renderGrid);
       }
     });
     host.addEventListener('toggle', (e) => {
@@ -2551,7 +2599,7 @@
       if (e.target && e.target.classList && e.target.classList.contains('cp-profile')) {
         if (e.target.open && !ctx.profCtl && A.profile) {
           ctx.profCtl = mountProfile(e.target.querySelector('[data-cp="profile"]'), { fuels: () => ctx.fuels, load: A.profile, save: A.saveProfile, ui,
-            confirm: null, onChange: () => { followProfile(); renderGrid(); } });
+            confirm: null, onChange: () => { followProfile(); runHeavy(renderGrid); } });
         }
         return;
       }

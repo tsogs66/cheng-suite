@@ -106,22 +106,20 @@ html.station .nav-plate svg { width: 16px; height: 16px; stroke: currentColor; f
 html.station .nav-item[data-module="voyage"] .nav-plate,
 html.station .nav-item[data-module="bunkerplan"] .nav-plate,
 html.station .nav-item[data-module="eca"] .nav-plate { background: #1d4e89; }
-html.station .nav-item[data-module="tanks"] .nav-plate,
-html.station .bottom-item[data-touch="soundings"] .bn-svg { background: #c4842a; color: #1a1208; }
+html.station .nav-item[data-module="tanks"] .nav-plate { background: #c4842a; color: #1a1208; }
 html.station .nav-item[data-module="bunkeringplan"] .nav-plate { background: #8a5a2b; }
-html.station .nav-item[data-module="eorb"] .nav-plate,
-html.station .bottom-item[data-touch="eorb"] .bn-svg { background: #a33b32; }
+html.station .nav-item[data-module="eorb"] .nav-plate { background: #a33b32; }
 html.station .nav-item[data-module="performance"] .nav-plate,
 html.station .nav-item[data-module="notes"] .nav-plate,
 html.station .nav-item[data-module="vessel"] .nav-plate,
 html.station .nav-item[data-module="license"] .nav-plate { background: #c6a15a; color: #1a1208; }
 html.station .nav-item[data-module="backup"] .nav-plate { background: #2f8f55; }
-html.station .bottom-item[data-touch="noon"] .bn-svg { background: #2a6cb0; }
+/* Bottom bar: one plate. Home, Noon, Soundings, e-ORB and More share colour, size and depth. Only the icon differs. */
 html.station .bottom-item .bn-svg {
-  background: #3a4450;
-  color: #f2efe6;
-  border-radius: 8px;
-  padding: 3px;
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 html.station .btn,

@@ -238,13 +238,6 @@ const FuelReport = (() => {
   /* ---------- page ---------- */
 
   async function render(main) {
-    try {
-      if (window.ChengNav && ChengNav.wantsSoundingCards()) {
-        document.documentElement.classList.add('sounding-cards');
-      } else {
-        document.documentElement.classList.remove('sounding-cards');
-      }
-    } catch (e) { /* layout class only */ }
     const bundle = currentBundle();
     let restoredDraft = false;
     /* Edits that never reached the saved copy (the program closed, the page was left in a hurry) come back. */
@@ -262,10 +255,11 @@ const FuelReport = (() => {
     await loadConversion();
     recompute();
 
+    const aioHead = typeof isAioEmbedded === 'function' && isAioEmbedded();
     main.innerHTML += `${bunkerNavHtml('fuel-report')}<div class="page-head no-print">
       <div>
-        <h1>Fuel Oil Report</h1>
-        <div class="desc">Tank condition sheet — soundings, VCF/WCF and weight in air per fuel tank</div>
+        <h1>${aioHead ? 'Soundings' : 'Fuel Oil Report'}</h1>
+        <div class="desc">${aioHead ? 'Fuel oil report · Monitoring · weight in air · ASTM 54B / 56' : 'Tank condition sheet — soundings, VCF/WCF and weight in air per fuel tank'}</div>
       </div>
       <div class="btn-row">
         <button class="btn primary" id="fr-print-save">PRINT &amp; SAVE</button>
@@ -352,15 +346,10 @@ const FuelReport = (() => {
    * after-bunkering report) render the same sheet against their own form.
    */
   function renderSectionPanel(section, formRows) {
-    const fuelTypes = Core.FUEL_TYPES;
-    const units = Core.UNIT_STANDARDS;
     const source = formRows || view.form.rows;
+    const phoneMain = { measuredM3: 1, weightAirMT: 1 };
     const rows = section.rows.map((row) => {
       const f = source[row.tankId] || {};
-      const typeOpts = fuelTypes.map((t) =>
-        `<option value="${t.id}" ${row.fuelType === t.id ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
-      const unitOpts = units.map((u) =>
-        `<option value="${u.id}" ${row.unit === u.id ? 'selected' : ''}>${esc(u.label)}</option>`).join('');
       const methodOpts = Core.METHODS.map((m) =>
         `<option value="${m.id}" ${row.method === m.id ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
       const tank = tankById(row.tankId);
@@ -373,16 +362,15 @@ const FuelReport = (() => {
       const diBtn = row.doubleInterpManual
         ? `<button type="button" class="btn ghost small fr-di-btn" data-double-interp="${esc(row.tankId)}" title="Manual double interpolation">Double interp…</button>`
         : '';
+      /* Fuel type stays on the row from the tank setup. It is not a column here. */
       return `<tr data-tank="${esc(row.tankId)}">
-        <th class="fr-tank-name" data-label="Tank">${esc(row.name)}<span class="fr-move" data-fr-move="${esc(row.tankId)}"></span></th>
-        <td data-label="Fuel type"><select data-row="${esc(row.tankId)}" data-field="fuelType">${typeOpts}</select></td>
-        <td class="fr-actual-cell" data-label="Sounding"><input type="number" step="any" data-row="${esc(row.tankId)}" data-field="reading" data-sheet-popup="actual" value="${esc(actualVal)}">${diBtn}</td>
-        <td data-label="Method">${methodCell}</td>
-        <td data-label="Temp"><input type="number" step="any" class="fr-narrow" data-row="${esc(row.tankId)}" data-field="tempC" data-sheet-popup="temp" value="${esc(f.tempC)}"></td>
-        <td data-label="SG"><input type="number" step="any" class="fr-wide" data-row="${esc(row.tankId)}" data-field="unitValue" data-sheet-popup="sg" value="${esc(f.unitValue)}"></td>
-        <td class="fr-check" data-label="In use"><input type="checkbox" data-row="${esc(row.tankId)}" data-field="inUse" ${row.inUse ? 'checked' : ''}></td>
+        <th class="fr-tank-name" data-label="Tank" data-phone="main">${esc(row.name)}<span class="fr-move" data-fr-move="${esc(row.tankId)}"></span><button type="button" class="fr-more-btn" data-fr-more aria-expanded="false">Details</button></th>
+        <td class="fr-actual-cell" data-label="Sounding" data-phone="main"><input type="number" step="any" data-row="${esc(row.tankId)}" data-field="reading" data-sheet-popup="actual" value="${esc(actualVal)}">${diBtn}</td>
+        <td data-label="Method" data-phone="main">${methodCell}</td>
+        <td data-label="Temp" data-phone="main"><input type="number" step="any" class="fr-narrow" data-row="${esc(row.tankId)}" data-field="tempC" data-sheet-popup="temp" value="${esc(f.tempC)}"></td>
+        <td data-label="SG" data-phone="main"><input type="number" step="any" class="fr-wide" data-row="${esc(row.tankId)}" data-field="unitValue" data-sheet-popup="sg" value="${esc(f.unitValue)}"></td>
         ${COMPUTED_COLUMNS.map((c) =>
-          `<td class="fr-calc" data-label="${esc(c.label)}" data-fr-cell="${esc(row.tankId)}.${c.field}"></td>`).join('')}
+          `<td class="fr-calc" data-phone="${phoneMain[c.field] ? 'main' : 'more'}" data-label="${esc(c.label)}" data-fr-cell="${esc(row.tankId)}.${c.field}"></td>`).join('')}
       </tr>`;
     }).join('');
 
@@ -392,15 +380,15 @@ const FuelReport = (() => {
         <table class="fr-sheet">
           <thead>
             <tr>
-              <th>TANK</th><th>FUEL TYPE</th><th>ACTUAL (CM / M³)</th><th>METHOD</th><th>TEMP. (°C)</th>
-              <th>SG</th><th>TANK IN USE</th>
+              <th>TANK</th><th>ACTUAL (CM / M³)</th><th>METHOD</th><th>TEMP. (°C)</th>
+              <th>SG</th>
               ${COMPUTED_COLUMNS.map((c) => `<th class="fr-calc-head">${esc(c.label)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>${rows}</tbody>
           <tfoot>
             <tr>
-              <th colspan="7">TOTAL — ${section.rows.length} tanks</th>
+              <th colspan="5">TOTAL — ${section.rows.length} tanks</th>
               <td class="fr-calc" data-fr-total="${esc(section.id)}.capacity100M3"></td>
               <td class="fr-calc" data-fr-total="${esc(section.id)}.capacity100MT"></td>
               <td class="fr-calc" data-fr-total="${esc(section.id)}.measuredM3"></td>
@@ -807,9 +795,7 @@ const FuelReport = (() => {
     for (const section of c.sections) {
       setCell(`[data-fr-section-note="${section.id}"]`,
         `100% capacity ${n(section.totals.capacity100MT, 2)} MT · 85% filling limit `
-        + `${n(section.totals.capacity85MT, 2)} MT · ${section.totals.tanksInUse} tank(s) in use`
-        + (section.totals.averageDensityInUse != null
-          ? ` · mean density in use ${n(section.totals.averageDensityInUse, 4)}` : '')
+        + `${n(section.totals.capacity85MT, 2)} MT`
         + (section.totals.movedIn
           ? ` · ${section.totals.movedIn} tank(s) counted here by fuel type` : '')
         + (section.totals.pinned
@@ -883,6 +869,16 @@ const FuelReport = (() => {
     wrap.addEventListener('change', edited);
 
     wrap.addEventListener('click', (e) => {
+      const more = e.target.closest('[data-fr-more]');
+      if (more) {
+        const tr = more.closest('tr');
+        if (tr) {
+          const open = tr.classList.toggle('fr-open');
+          more.setAttribute('aria-expanded', open ? 'true' : 'false');
+          more.textContent = open ? 'Hide details' : 'Details';
+        }
+        return;
+      }
       const btn = e.target.closest('[data-double-interp]');
       if (!btn || !window.TankDoubleInterpManual) return;
       const tankId = btn.dataset.doubleInterp;
@@ -1544,7 +1540,6 @@ const FuelReport = (() => {
           <td>${esc(r.methodLabel)}</td>
           <td>SG</td>
           <td>${n(r.density15 != null ? r.density15 : r.unitValue, 4)}</td>
-          <td>${r.inUse ? 'YES' : ''}</td>
           <td>${pct(r.volumePercent)}</td>
         </tr>`);
       }
@@ -1575,7 +1570,7 @@ const FuelReport = (() => {
       <table class="fr-print-table">
         <thead><tr>
           <th class="fr-print-name">Tank</th><th>Fuel</th><th>Method</th>
-          <th>SG</th><th>Dens @15</th><th>In use</th><th>Vol %</th>
+          <th>SG</th><th>Dens @15</th><th>Vol %</th>
         </tr></thead>
         <tbody>${extraRows.join('')}</tbody>
       </table>

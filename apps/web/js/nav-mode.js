@@ -55,13 +55,10 @@
     return nativePhone(wdw);
   }
 
-  /** Four swipe panes: phone portrait up to ~430px, and short landscape. */
+  /** Four swipe panes on every phone and tablet that uses the bottom bar.
+      Windows at 1366px and wider keeps the single scrolling board. */
   function wantsPhonePanes(view) {
-    if (!wantsBottomNav(view)) return false;
-    var wdw = viewOf(view);
-    var w = wdw.innerWidth || 0;
-    var h = wdw.innerHeight || 0;
-    return w <= 430 || (h > 0 && h < 500);
+    return wantsBottomNav(view);
   }
 
   /** Height picks chips instead of a bottom bar. It does not decide "phone". */

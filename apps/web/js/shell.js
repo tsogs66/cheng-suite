@@ -8,6 +8,7 @@
   const backdrop = document.getElementById('sidebarBackdrop');
   const toastEl = document.getElementById('toast');
   let current = 'home';
+  let currentPage = '';
   let touchKey = 'home';
   let unfinishedLogKept = false;
   let vesselLoadDepth = 0;
@@ -17,15 +18,21 @@
   const moreSheet = document.getElementById('bnMoreSheet');
 
   function setNavActive(module) {
+    const match = (el) => {
+      if ((el.dataset.module || '') !== module) return false;
+      const page = el.dataset.page || '';
+      if (!page) return module !== 'voyage' && module !== 'tanks';
+      return page === currentPage;
+    };
     document.querySelectorAll('.nav-item').forEach((el) => {
-      el.classList.toggle('active', el.dataset.module === module);
+      el.classList.toggle('active', match(el));
     });
     document.querySelectorAll('.bottom-item').forEach((el) => {
       const key = el.dataset.touch || el.dataset.module;
       el.classList.toggle('active', key === touchKey);
     });
     document.querySelectorAll('#bnMoreSheet .bn-more-item').forEach((el) => {
-      el.classList.toggle('active', el.dataset.module === module);
+      el.classList.toggle('active', match(el));
     });
   }
 
@@ -58,8 +65,9 @@
   function recordPage(module) {
     rememberPage(module);
     try {
-      if (!history.state || history.state.aioModule !== module) {
-        history.pushState({ aioModule: module }, '');
+      const page = currentPage || '';
+      if (!history.state || history.state.aioModule !== module || (history.state.aioPage || '') !== page) {
+        history.pushState({ aioModule: module, aioPage: page }, '');
       }
     } catch { /* history is a convenience, never a blocker */ }
   }
@@ -71,7 +79,10 @@
       return;
     }
     if (st && st.aioModule) {
-      if (st.aioModule !== current) navigate(st.aioModule, { fromHistory: true });
+      const page = st.aioPage || '';
+      if (st.aioModule !== current || page !== currentPage) {
+        navigate(st.aioModule, { fromHistory: true, force: !!page, page: page || undefined });
+      }
       return;
     }
     /* The bottom of the stack: the first page was reached. */
@@ -392,11 +403,13 @@
         }
       } catch { /* ignore */ }
     }
-    if (opts && opts.page && (next === 'voyage' || next === 'tanks')) {
+    const wantPage = (opts && opts.page && (next === 'voyage' || next === 'tanks')) ? String(opts.page) : '';
+    const pageChanged = (next === 'voyage' || next === 'tanks') && wantPage !== currentPage;
+    if (wantPage) {
       try {
         sessionStorage.setItem(
           next === 'voyage' ? 'chengAioPendingVoyagePage' : 'chengAioPendingTankPage',
-          String(opts.page)
+          wantPage
         );
       } catch { /* ignore */ }
     }
@@ -410,6 +423,7 @@
        force:true so the embed can reload for the new ship. */
     if (
       !force &&
+      !pageChanged &&
       next === current &&
       isSoftEmbedModule(next) &&
       main.querySelector('.aio-embed-wrap:not(.aio-background-save) iframe.aio-embed-frame')
@@ -429,6 +443,7 @@
     const parked = !force ? reclaimParkedFrame(next) : null;
     if (parked) {
       current = next;
+      currentPage = next === 'voyage' ? (wantPage || 'summary') : next === 'tanks' ? (wantPage || 'dashboard') : '';
       if (!(opts && opts.fromHistory)) recordPage(next);
       setNavActive(current);
       closeSidebar();
@@ -451,6 +466,7 @@
       });
     }
     current = next;
+    currentPage = next === 'voyage' ? (wantPage || 'summary') : next === 'tanks' ? (wantPage || 'dashboard') : '';
     if (!(opts && opts.fromHistory)) recordPage(next);
     setNavActive(current);
     closeSidebar();
@@ -1099,7 +1115,7 @@
         try { sessionStorage.setItem('chengAioPendingVoyagePage', page); } catch { /* ignore */ }
       }
       const mod = String(d.module);
-      navigate(mod, { force: true });
+      navigate(mod, { force: true, page: page || undefined });
     }
     if (d.type === 'chengaio-bunker-alert') {
       onBunkerAlertBeat(e.source, d);

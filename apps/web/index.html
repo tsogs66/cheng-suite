@@ -15,6 +15,7 @@
   <!-- No Google Fonts — offline first launch must not block on network CSS. -->
   <link rel="stylesheet" href="/css/shell.css">
   <link rel="stylesheet" href="/css/station.css">
+  <link rel="stylesheet" href="/css/station-pages.css">
   <script src="/js/station-boot.js"></script>
   <script src="/js/nav-mode.js"></script>
   <link rel="stylesheet" href="/css/hud-effects.css">
@@ -112,8 +113,8 @@
       <aside class="sidebar" id="sidebar">
         <nav class="nav" id="mainNav">
           <button type="button" class="nav-item active" data-module="home"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg></span>Home</button>
-          <button type="button" class="nav-item" data-module="voyage"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m15 9-3 7-1-3-3-1z"/></svg></span>Voyage</button>
-          <button type="button" class="nav-item" data-module="tanks"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h8v4H8zM9 7v12a3 3 0 0 0 6 0V7"/></svg></span>Tanks</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="summary"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m15 9-3 7-1-3-3-1z"/></svg></span>Voyage</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="dashboard"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h8v4H8zM9 7v12a3 3 0 0 0 6 0V7"/></svg></span>Tanks</button>
           <button type="button" class="nav-item" data-module="bunkerplan"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 16l5-6 4 3 7-8"/><path d="M14 5h6v6"/></svg></span>Consumption Plan</button>
           <button type="button" class="nav-item" data-module="bunkeringplan"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 14h10v5H4zM14 16h4l2 2v3h-6zM8 14V8h4"/></svg></span>Bunkering Plan</button>
           <button type="button" class="nav-item" data-module="eca"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 14c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/></svg></span>ECA</button>
@@ -125,6 +126,36 @@
           <button type="button" class="nav-item" data-module="backup"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7l4-4 4 4M12 3v12M6 15v4h12v-4"/></svg></span>Backup &amp; Sync</button>
           <button type="button" class="nav-item" data-module="license"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="14" r="3"/><path d="M11 14h9v3h-3v-3"/></svg></span>License</button>
           <button type="button" class="nav-item" data-module="about"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg></span>About</button>
+          <div class="nav-label">Voyage</div>
+          <button type="button" class="nav-item" data-module="voyage" data-page="entry"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg></span>Log Entry</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="rob"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 19V5h4l2 4h6v10z"/></svg></span>ROB</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="consumption"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V9M10 19V5M15 19v-7M20 19V8"/></svg></span>Consumption</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="voyageabstract"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6zM9 11h6M9 15h6"/></svg></span>Voyage Abstract</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="rangetotals"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18h16M7 18V8M12 18V4M17 18v-6"/></svg></span>Range Totals</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="trends"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 16l5-5 3 3 8-8"/></svg></span>Trends</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="receipts"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10v18l-2-1-3 1-3-1-2 1zM9 8h6M9 12h6"/></svg></span>Receipts</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="reports"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM9 12h6M9 16h4"/></svg></span>Reports</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="reference"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h6v14H5zM13 5h6v14h-6"/></svg></span>Reference</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="guide"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg></span>Voyage guide</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="shipsetup"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>Setup</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="voyagesetup"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 16l8-9 8 9M8 16v4h8v-4"/></svg></span>Voyage Setup</button>
+          <button type="button" class="nav-item" data-module="voyage" data-page="setup"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M6 20c1-3 3-4 6-4s5 1 6 4"/></svg></span>Vessel Data</button>
+          <div class="nav-label">Tanks</div>
+          <button type="button" class="nav-item" data-module="tanks" data-page="fuel-report"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h8v4H8zM9 7v12a3 3 0 0 0 6 0V7"/><path d="M12 11v4"/></svg></span>Monitoring</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="fuel"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 19V5h4l2 4h6v10z"/></svg></span>Fuel Oil</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="lube"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h8v5a4 4 0 0 1-8 0zM9 20h6"/></svg></span>Lube Oil</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="misc"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h16v10H4zM8 8V5h8v3"/></svg></span>Misc / Bilge</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="water"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span>Fresh Water</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="add-tank"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>Add Tank</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="calibration"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>Calibration</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="bunker-after"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 14h10v5H4zM14 16h4l2 2v3h-6z"/></svg></span>Bunkering</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="bunker-summary"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4"/></svg></span>Bunker Summary</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="sounding-card"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10v18H7zM9 8h6M9 12h6"/></svg></span>Sounding Card</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="report"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span>Voyage Report</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="vcf-wcf"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 18l4-12h2l4 12M7 13h6M16 6h3M16 12h3M16 18h3"/></svg></span>VCF / WCF</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="iso8217"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5"/></svg></span>ISO 8217</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="settings"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7l4-4 4 4M12 3v12M6 15v4h12v-4"/></svg></span>Tank backup</button>
+          <button type="button" class="nav-item" data-module="tanks" data-page="about"><span class="nav-plate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg></span>Tank Chief</button>
         </nav>
         <div class="sidebar-meta" id="sidebarFooter">
           <!-- Day/night sits with the version and the licensed email: three
@@ -168,25 +199,51 @@
         <div class="bn-more-title">More</div>
         <div class="bn-more-grid">
           <div class="bn-more-label">Watch</div>
-          <button type="button" class="bn-more-item" data-module="home" data-touch="home"><span>Home</span></button>
-          <button type="button" class="bn-more-item" data-module="voyage" data-page="entry" data-touch="noon"><span>Noon report</span></button>
-          <button type="button" class="bn-more-item" data-module="spares"><span>Spares</span></button>
-          <button type="button" class="bn-more-item" data-module="notes"><span>Notes</span></button>
+          <button type="button" class="bn-more-item" data-module="home" data-touch="home"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg></span><span>Home</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="entry" data-touch="noon"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg></span><span>Noon report</span></button>
+          <button type="button" class="bn-more-item" data-module="spares"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span><span>Spares</span></button>
+          <button type="button" class="bn-more-item" data-module="notes"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/><path d="M9 12h6"/></svg></span><span>Notes</span></button>
           <div class="bn-more-label">Voyage</div>
-          <button type="button" class="bn-more-item" data-module="voyage"><span>Voyage</span></button>
-          <button type="button" class="bn-more-item" data-module="bunkerplan"><span>Consumption Plan</span></button>
-          <button type="button" class="bn-more-item" data-module="eca"><span>ECA</span></button>
-          <button type="button" class="bn-more-item" data-module="performance"><span>Performance</span></button>
-          <button type="button" class="bn-more-item" data-module="eorb" data-touch="eorb"><span>e-ORB</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="summary"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m15 9-3 7-1-3-3-1z"/></svg></span><span>Voyage</span></button>
+          <button type="button" class="bn-more-item" data-module="bunkerplan"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 16l5-6 4 3 7-8"/></svg></span><span>Consumption Plan</span></button>
+          <button type="button" class="bn-more-item" data-module="eca"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M3 14c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/></svg></span><span>ECA</span></button>
+          <button type="button" class="bn-more-item" data-module="performance"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 12l4-2"/></svg></span><span>Performance</span></button>
+          <button type="button" class="bn-more-item" data-module="eorb" data-touch="eorb"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 4h9a3 3 0 0 1 3 3v13H8a2 2 0 0 1-2-2z"/></svg></span><span>e-ORB</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="rob"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 19V5h4l2 4h6v10z"/></svg></span><span>ROB</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="consumption"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M5 19V9M10 19V5M15 19v-7M20 19V8"/></svg></span><span>Consumption</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="voyageabstract"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/></svg></span><span>Voyage Abstract</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="rangetotals"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 18h16M7 18V8M12 18V4M17 18v-6"/></svg></span><span>Range Totals</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="trends"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 16l5-5 3 3 8-8"/></svg></span><span>Trends</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="receipts"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M7 3h10v18l-5-2-5 2z"/></svg></span><span>Receipts</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="reports"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><span>Reports</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="reference"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M5 5h6v14H5zM13 5h6v14h-6"/></svg></span><span>Reference</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="guide"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5"/></svg></span><span>Voyage guide</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="shipsetup"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3"/></svg></span><span>Setup</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="voyagesetup"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 16l8-9 8 9"/></svg></span><span>Voyage Setup</span></button>
+          <button type="button" class="bn-more-item" data-module="voyage" data-page="setup"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M6 20c1-3 3-4 6-4s5 1 6 4"/></svg></span><span>Vessel Data</span></button>
           <div class="bn-more-label">Tanks</div>
-          <button type="button" class="bn-more-item" data-module="tanks"><span>Tanks</span></button>
-          <button type="button" class="bn-more-item" data-module="tanks" data-page="fuel-report" data-touch="soundings"><span>Soundings</span></button>
-          <button type="button" class="bn-more-item" data-module="bunkeringplan"><span>Bunkering Plan</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="dashboard"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M8 3h8v4H8zM9 7v12a3 3 0 0 0 6 0V7"/></svg></span><span>Tanks</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="fuel-report" data-touch="soundings"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M8 3h8v4H8zM9 7v12a3 3 0 0 0 6 0V7"/><path d="M12 11v4"/></svg></span><span>Soundings</span></button>
+          <button type="button" class="bn-more-item" data-module="bunkeringplan"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 14h10v5H4zM14 16h4l2 2v3h-6z"/></svg></span><span>Bunkering Plan</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="fuel"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 19V5h4l2 4h6v10z"/></svg></span><span>Fuel Oil</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="lube"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M8 3h8v5a4 4 0 0 1-8 0z"/></svg></span><span>Lube Oil</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="misc"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 8h16v10H4z"/></svg></span><span>Misc / Bilge</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="water"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg></span><span>Fresh Water</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="add-tank"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span>Add Tank</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="calibration"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span><span>Calibration</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="bunker-after"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M4 14h10v5H4z"/></svg></span><span>Bunkering</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="bunker-summary"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 4h12v16H6zM9 8h6"/></svg></span><span>Bunker Summary</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="sounding-card"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M7 3h10v18H7z"/></svg></span><span>Sounding Card</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="report"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><span>Voyage Report</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="vcf-wcf"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M5 18l4-12h2l4 12"/></svg></span><span>VCF / WCF</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="iso8217"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/></svg></span><span>ISO 8217</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="settings"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M8 7l4-4 4 4M12 3v12"/></svg></span><span>Tank backup</span></button>
+          <button type="button" class="bn-more-item" data-module="tanks" data-page="about"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5"/></svg></span><span>Tank Chief</span></button>
           <div class="bn-more-label">Ship</div>
-          <button type="button" class="bn-more-item" data-module="vessel"><span>Vessel Setup</span></button>
-          <button type="button" class="bn-more-item" data-module="backup"><span>Backup &amp; Sync</span></button>
-          <button type="button" class="bn-more-item" data-module="license"><span>License</span></button>
-          <button type="button" class="bn-more-item" data-module="about"><span>About</span></button>
+          <button type="button" class="bn-more-item" data-module="vessel"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M12 11v8"/></svg></span><span>Vessel Setup</span></button>
+          <button type="button" class="bn-more-item" data-module="backup"><span class="nav-plate"><svg viewBox="0 0 24 24"><path d="M8 7l4-4 4 4M12 3v12"/></svg></span><span>Backup &amp; Sync</span></button>
+          <button type="button" class="bn-more-item" data-module="license"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="8" cy="14" r="3"/><path d="M11 14h9"/></svg></span><span>License</span></button>
+          <button type="button" class="bn-more-item" data-module="about"><span class="nav-plate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg></span><span>About</span></button>
         </div>
         <button type="button" class="theme-toggle bn-more-theme" data-theme-toggle aria-pressed="false" title="Colour theme">Bright</button>
         <button type="button" class="theme-toggle bn-more-theme bn-more-fs" id="bnMoreFullscreen" aria-pressed="false" hidden title="Hide the Android status and navigation bars. Swipe from the edge to bring them back.">Full screen: Off</button>

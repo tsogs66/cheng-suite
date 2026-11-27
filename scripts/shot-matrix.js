@@ -24,14 +24,25 @@ fs.mkdirSync(outDir, { recursive: true });
 const PHONE = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 const DESK = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-const shots = [
-  { file: 'aio-1366x768.png', w: 1366, h: 768, ua: DESK, url: base + '/' },
-  { file: 'aio-1920x1080.png', w: 1920, h: 1080, ua: DESK, url: base + '/' },
-  { file: 'aio-360x800.png', w: 360, h: 800, ua: PHONE, url: base + '/' },
-  { file: 'aio-430x932.png', w: 430, h: 932, ua: PHONE, url: base + '/' },
-  { file: 'aio-tablet-800x1280.png', w: 800, h: 1280, ua: PHONE, url: base + '/' },
-  { file: 'aio-tablet-1280x800.png', w: 1280, h: 800, ua: PHONE, url: base + '/' },
+const sizes = [
+  { tag: '1366x768', w: 1366, h: 768, ua: DESK },
+  { tag: '800x1280', w: 800, h: 1280, ua: PHONE },
+  { tag: '1280x800', w: 1280, h: 800, ua: PHONE },
+  { tag: '360x800', w: 360, h: 800, ua: PHONE },
 ];
+const pages = [
+  { name: 'home', url: base + '/' },
+  { name: 'soundings', url: base + '/tanks/?chengaio=1&page=fuel-report' },
+  { name: 'bunker-after', url: base + '/tanks/?chengaio=1&page=bunker-after' },
+  { name: 'bunker-summary', url: base + '/tanks/?chengaio=1&page=bunker-summary' },
+  { name: 'noon', url: base + '/voyage/voyage_manager.html?chengaio=1&page=entry' },
+];
+const shots = [];
+for (const page of pages) {
+  for (const size of sizes) {
+    shots.push({ file: 'aio-' + page.name + '-' + size.tag + '.png', w: size.w, h: size.h, ua: size.ua, url: page.url });
+  }
+}
 
 function waitHttp(url, tries) {
   return new Promise((resolve, reject) => {

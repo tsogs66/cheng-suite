@@ -1,0 +1,322 @@
+/* Mockup tokens on the live pages. Loaded after each app's own CSS. */
+html.station {
+  --bg: #0b1218;
+  --bg-panel: #13202b;
+  --bg-panel-2: #182838;
+  --bg-card: #182838;
+  --ink: #0b1218;
+  --panel: #13202b;
+  --panel2: #182838;
+  --paper: #e7eef4;
+  --paper-dim: #93a4b3;
+  --text: #e7eef4;
+  --text-dim: #93a4b3;
+  --muted: #93a4b3;
+  --brass: #e2a84a;
+  --accent: #e2a84a;
+  --accent-2: #3cb6c6;
+  --teal: #3cb6c6;
+  --line: #2a3d4e;
+  --line-strong: #3d5568;
+  --border: #2a3d4e;
+  background-color: #0b1218;
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 27px, rgba(90, 150, 170, 0.07) 28px),
+    repeating-linear-gradient(90deg, transparent 0 27px, rgba(90, 150, 170, 0.07) 28px);
+}
+html.station.bright {
+  --bg: #e6e0d2;
+  --bg-panel: #f7f3ea;
+  --ink: #e6e0d2;
+  --panel: #f7f3ea;
+  --paper: #14202b;
+  --text: #14202b;
+  --brass: #8a5410;
+  background-color: #e6e0d2;
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 27px, rgba(90, 70, 40, 0.08) 28px),
+    repeating-linear-gradient(90deg, transparent 0 27px, rgba(90, 70, 40, 0.08) 28px);
+}
+html.station .panel,
+html.station .band,
+html.station .form-panel,
+html.station .unit-box,
+html.station .card,
+html.station .fr-section {
+  background-color: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 8px 16px rgba(0,0,0,.22);
+}
+html.station h2,
+html.station .section-title,
+html.station .section-head h2 {
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+html.station .btn,
+html.station button.primary,
+html.station .home-action,
+html.station .bn-more-item {
+  border: 1px solid #8ea0ae;
+  border-bottom-color: #121920;
+  background-image: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,.02) 42%, rgba(0,0,0,.18));
+  background-color: #243644;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 2px 0 #0c141c;
+}
+html.station .bn-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+html.station .table-scroll,
+html.station .scroll-x {
+  overflow-x: auto;
+  overflow-y: visible;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+html.station table.fr-sheet,
+html.station table.data-table,
+html.station table.tank-table,
+html.station table.excel-table,
+html.station table.calib-table,
+html.station table.leg-table,
+html.station .table-scroll > table,
+html.station .scroll-x > table {
+  min-width: 720px;
+  width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+html.station table.fr-sheet th,
+html.station table.fr-sheet td,
+html.station table.data-table th,
+html.station table.data-table td,
+html.station table.tank-table th,
+html.station table.tank-table td,
+html.station table.excel-table th,
+html.station table.excel-table td,
+html.station .table-scroll > table th,
+html.station .table-scroll > table td,
+html.station .scroll-x > table th,
+html.station .scroll-x > table td {
+  white-space: nowrap;
+}
+html.station table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #13202b;
+}
+html.station.bright table thead th { background: #f7f3ea; }
+html.station table th:first-child,
+html.station table td:first-child,
+html.station table th.fr-tank-name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #13202b;
+}
+html.station.bright table th:first-child,
+html.station.bright table td:first-child,
+html.station.bright table th.fr-tank-name { background: #f7f3ea; }
+html.station table thead th:first-child,
+html.station table thead th.fr-tank-name { z-index: 3; }
+html.station table input,
+html.station table select {
+  min-width: 72px;
+}
+
+/* The suite already has a header. Voyage Chief and Tank Chief keep theirs only when they run alone. */
+html.station.chengaio-embed .masthead,
+html.station.chengaio-embed .footer-note {
+  display: none !important;
+}
+
+html.station .page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+}
+html.station .page-head h1 {
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  margin: 0;
+}
+html.station .page-head .desc { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
+
+html.station .btn,
+html.station button.btn,
+html.station .btn.primary,
+html.station button.btn.primary,
+html.station button.primary {
+  border: 1px solid #8ea0ae !important;
+  border-left-width: 1px !important;
+  border-bottom-color: #121920 !important;
+  background-color: #243644 !important;
+  background-image: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,.02) 42%, rgba(0,0,0,.18)) !important;
+  color: var(--text) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 2px 0 #0c141c !important;
+  border-radius: 4px;
+  min-height: 44px;
+  font-family: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+html.station .btn.primary,
+html.station button.btn.primary,
+html.station button.primary {
+  background-color: #3a2a14 !important;
+  background-image: linear-gradient(180deg, rgba(226,168,74,.45), rgba(226,168,74,.12)) !important;
+  border-color: #e2a84a !important;
+  color: #f4e2b8 !important;
+  font-weight: 650;
+}
+
+/* Phone only. Tablet (800×1280 and 1280×800) and Windows keep the v1 table. */
+@media (max-width: 599px), (max-height: 500px) and (orientation: landscape) {
+  html.station .fr-sheet {
+    min-width: 0 !important;
+    width: 100% !important;
+    display: block;
+  }
+  html.station .fr-sheet thead { display: none; }
+  html.station .fr-sheet tbody,
+  html.station .fr-sheet tfoot,
+  html.station .fr-sheet tr,
+  html.station .fr-sheet th,
+  html.station .fr-sheet td,
+  html.station table.fr-table tbody,
+  html.station table.fr-table tr,
+  html.station table.fr-table th,
+  html.station table.fr-table td {
+    display: block;
+    width: auto !important;
+    min-width: 0 !important;
+    white-space: normal;
+    position: static;
+  }
+  html.station .fr-sheet tbody tr,
+  html.station table.fr-table tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 8px;
+    margin: 0 0 8px;
+    padding: 8px;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    background: #13202b;
+  }
+  html.station .fr-sheet tfoot tr {
+    display: block;
+  }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) tbody tr {
+    grid-template-areas:
+      "name name"
+      "sound method"
+      "temp sg"
+      "meas weight";
+  }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) th.fr-tank-name { grid-area: name; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-label="Sounding"] { grid-area: sound; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-label="Method"] { grid-area: method; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-label="Temp"] { grid-area: temp; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-label="SG"] { grid-area: sg; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-fr-cell$=".measuredM3"] { grid-area: meas; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-fr-cell$=".weightAirMT"] { grid-area: weight; }
+  html.station .fr-sheet th.fr-tank-name,
+  html.station table.bp-sheet tbody th,
+  html.station table.bp-est-sheet tbody th,
+  html.station table.fr-table tbody td:first-child {
+    grid-column: 1 / -1;
+    font-size: 14px;
+    font-weight: 650;
+    padding: 0 0 6px;
+    background: transparent;
+  }
+  html.station .fr-sheet td[data-label] { padding: 4px 0; }
+  html.station .fr-sheet td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  html.station .fr-more-btn {
+    display: inline-flex;
+    margin-left: 8px;
+    min-height: 32px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+  html.station .fr-sheet td[data-phone="more"],
+  html.station .fr-sheet th[data-phone="more"] { display: none; }
+  html.station .fr-sheet tr.fr-open td[data-phone="more"] { display: block; }
+  html.station .fr-sheet td.fr-actual-cell input,
+  html.station .fr-sheet td[data-label="Temp"] input,
+  html.station .fr-sheet td[data-label="SG"] input,
+  html.station .fr-sheet td[data-label="Method"] select,
+  html.station table.bp-sheet tbody input,
+  html.station table.bp-sheet tbody select,
+  html.station table.fr-table tbody input {
+    min-height: 44px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  html.station .fr-sheet td.fr-actual-cell input,
+  html.station .fr-sheet td[data-label="Temp"] input {
+    font-size: 22px;
+  }
+  html.station .fr-sheet td[data-fr-cell$=".weightAirMT"] {
+    font-size: 22px;
+    font-weight: 650;
+  }
+}
+
+.fr-more-btn { display: none; }
+
+/* The Plan / Monitoring / After / Summary strip sticks to the top.
+   Column titles stick just under it, so a scroll does not hide them. */
+html.station .bk-nav {
+  z-index: 8;
+  background: #0b1218;
+}
+html.station.bright .bk-nav { background: #e6e0d2; }
+html.station:has(.bk-nav) table thead th {
+  top: 100px;
+}
+
+/* Tablet and Windows: the same columns as v1, with the station colours.
+   Headers wrap so a column stays near its v1 width. A wide sheet scrolls in .scroll-x. */
+@media (min-width: 600px) {
+  html.station .scroll-x > table.fr-sheet thead th,
+  html.station table.fr-sheet thead th {
+    white-space: normal;
+    background: #13202b;
+  }
+  html.station.bright table.fr-sheet thead th { background: #f7f3ea; }
+  html.station table.fr-sheet tbody tr:nth-child(even) td {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  html.station table.fr-sheet tbody tr:nth-child(even) th.fr-tank-name {
+    background: #162432;
+  }
+  html.station table.fr-sheet tbody input:not([type="checkbox"]),
+  html.station table.fr-sheet tbody select,
+  html.station table.fr-table input:not([type="checkbox"]),
+  html.station table.fr-table select {
+    min-height: 44px;
+  }
+}
