@@ -64,16 +64,24 @@
       for (i = 0; i < 256; i++) s += flat[i] * n.w3[i * 64 + j];
       h[j] = s > 0 ? s : 0;
     }
-    var o = new Float32Array(10), mx = -1e9;
-    for (var k = 0; k < 10; k++) {
+    var nClass = n.b4.length;
+    var o = new Float32Array(nClass), mx = -1e9;
+    for (var k = 0; k < nClass; k++) {
       s = n.b4[k];
-      for (j = 0; j < 64; j++) s += h[j] * n.w4[j * 10 + k];
+      for (j = 0; j < 64; j++) s += h[j] * n.w4[j * nClass + k];
       o[k] = s; if (s > mx) mx = s;
     }
     var sum = 0;
-    for (k = 0; k < 10; k++) { o[k] = Math.exp(o[k] - mx); sum += o[k]; }
-    for (k = 0; k < 10; k++) o[k] /= sum;
+    for (k = 0; k < nClass; k++) { o[k] = Math.exp(o[k] - mx); sum += o[k]; }
+    for (k = 0; k < nClass; k++) o[k] /= sum;
     return o;
+  }
+
+  /** Confidence among the ten digits, so a punctuation class cannot dilute a figure the net already knew. */
+  function digitConf(pr) {
+    var bi = 0, lim = Math.min(10, pr.length), s = 0;
+    for (var k = 0; k < lim; k++) { s += pr[k]; if (pr[k] > pr[bi]) bi = k; }
+    return { i: bi, p: s ? pr[bi] / s : 0 };
   }
 
   /** Average-pool resize of a float image (sw x sh) to (dw x dh). */
@@ -229,7 +237,7 @@
     /* Two neighbouring pieces that, put together, read as one digit with more confidence than either alone are one
        digit written in two strokes (an open 0, a 4, a 5): let the network judge, when it is loaded. */
     if (NET) {
-      var best = function (gp) { var pr = classify(toMnist(ink, cw, gp.x0, gp.y0, gp.x1, gp.y1)); var m = 0; for (var q = 0; q < 10; q++) if (pr[q] > m) m = pr[q]; return m; };
+      var best = function (gp) { return digitConf(classify(toMnist(ink, cw, gp.x0, gp.y0, gp.x1, gp.y1))).p; };
       groups.sort(function (a, b) { return a.x0 - b.x0; });
       for (var gi = 0; gi + 1 < groups.length;) {
         var ga = groups[gi], gb = groups[gi + 1];
@@ -256,8 +264,7 @@
          or one far wider than tall, is two that touch */
       var tooWide = w2 > h2 * 1.6;
       if (!tooWide && w2 > h2 * 0.95 && NET) {
-        var pr1 = classify(toMnist(ink, cw, g2.x0, g2.y0, g2.x1, g2.y1)), mx1 = 0;
-        for (var q1 = 0; q1 < 10; q1++) if (pr1[q1] > mx1) mx1 = pr1[q1];
+        var mx1 = digitConf(classify(toMnist(ink, cw, g2.x0, g2.y0, g2.x1, g2.y1))).p;
         if (mx1 >= 0.9) { chars.push(g2); continue; }
       }
       if (h2 > Hd * 0.55 && w2 > h2 * 0.95) {
@@ -335,9 +342,10 @@
         var hasAfter = out.slice(idx + 1).some(function (q) { return q.kind === 'digit'; });
         if (!hasBefore || !hasAfter) return;
       } else if (pt.kind === 'minus') {
-        var after = idx + 1 < out.length && out[idx + 1].kind === 'digit';
-        var first = !out.slice(0, idx).some(function (q) { return q.kind === 'digit'; });
-        if (!after || !first) return;
+        var afterM = out.slice(idx + 1).some(function (q) { return q.kind === 'digit'; });
+        var beforeM = out.slice(0, idx).some(function (q) { return q.kind === 'digit'; });
+        if (sopts && sopts.dateSep) { if (!afterM || !beforeM) return; }
+        else if (!afterM || beforeM) return;
       }
       kept.push(pt);
     });
@@ -385,7 +393,7 @@
     if (cut < 0 && dg.length >= 2) {
       var last = dg[dg.length - 1], prev = dg[dg.length - 2];
       var lh = last.box[3] - last.box[1] + 1, gap = last.box[0] - prev.box[2] - 1;
-      var pr = classify(last.img), m = 0; for (var q = 0; q < 10; q++) if (pr[q] > m) m = pr[q];
+      var m = digitConf(classify(last.img)).p;
       var risesAbove = last.box[1] <= medTop - 0.2 * med && lh >= med * 1.15;      // ring and C touching: one mark taller than the digits
       var looseC = (gap >= 0.3 * med && lh >= 0.8 * med && m < 0.75) || (dg.length >= 3 && gap >= 0.7 * med && lh >= 0.7 * med);   // a C standing well apart from the number
       if (risesAbove || looseC) cut = parts.indexOf(last);
@@ -407,10 +415,9 @@
       if (pt.kind === 'dot') { if (allow.indexOf('.') >= 0) { out.push({ ch: '.', conf: 90, box: pt.box }); text += '.'; } return; }
       if (pt.kind === 'minus') { if (allow.indexOf('-') >= 0) { out.push({ ch: '-', conf: 85, box: pt.box }); text += '-'; } return; }
       if (pt.kind === 'slash') { if (allow.indexOf('/') >= 0) { out.push({ ch: '/', conf: 85, box: pt.box }); text += '/'; } return; }
-      var pr = classify(pt.img);
-      var bi = 0;
-      for (var k = 1; k < 10; k++) if (pr[k] > pr[bi]) bi = k;
-      var c100 = Math.round(pr[bi] * 100);
+      var dig = digitConf(classify(pt.img));
+      var bi = dig.i;
+      var c100 = Math.round(dig.p * 100);
       out.push({ ch: String(bi), conf: c100, box: pt.box });
       text += String(bi);
       if (c100 < conf) conf = c100;
@@ -422,15 +429,19 @@
       var hs = dc.map(function (c) { return c.box[3] - c.box[1] + 1; }).sort(function (a, b) { return a - b; });
       /* letters of one word differ in height far more than the digits of one number do */
       var uneven = hs[hs.length - 1] > hs[0] * 1.5 && hs[hs.length >> 1] < hs[hs.length - 1] * 0.85;
-      if (meanC < 62 || uneven) return { text: '', conf: 0, chars: out };
+      if ((meanC < 55 && uneven) || (opts.emptyIsZero && meanC < 50 && uneven)) {
+        if (opts.emptyIsZero) return { text: '0', conf: 40, chars: out, emptyWord: true };
+        return { text: '', conf: 0, chars: out, emptyWord: true };
+      }
+      if (meanC < 62 || uneven) return { text: '', conf: 0, chars: out, emptyWord: true };
     }
-    /* only one decimal point, and a minus only at the start */
-    var seenDot = false, clean = '';
+    /* one decimal point in a number; a date may keep a dash between its parts; a minus starts a number */
+    var seenDot = false, clean = '', dateSep = opts && opts.dateSep;
     for (var i = 0; i < text.length; i++) {
       var c = text.charAt(i);
       if (c === '/') seenDot = false;   // each number of a pair has its own decimal point
-      if (c === '.') { if (seenDot) continue; seenDot = true; }
-      if (c === '-' && clean.length) continue;
+      if (c === '.') { if (seenDot && !dateSep) continue; seenDot = true; }
+      if (c === '-' && clean.length && !dateSep) continue;
       clean += c;
     }
     clean = clean.replace(/^[.\/]+/, '').replace(/[.\/]+$/, '');
@@ -449,9 +460,8 @@
     parts.forEach(function (p) { Hd = Math.max(Hd, p.box[3] - p.box[1] + 1); });
     var words = [], cur = null;
     parts.forEach(function (pt) {
-      var pr = classify(pt.img), bi = 0;
-      for (var k = 1; k < 10; k++) if (pr[k] > pr[bi]) bi = k;
-      var c = { ch: String(bi), conf: Math.round(pr[bi] * 100), box: pt.box };
+      var dig = digitConf(classify(pt.img));
+      var c = { ch: String(dig.i), conf: Math.round(dig.p * 100), box: pt.box };
       if (!cur || pt.box[0] - cur.chars[cur.chars.length - 1].box[2] > Hd * 0.55) { cur = { chars: [], x0: pt.box[0], x1: pt.box[2] }; words.push(cur); }
       cur.chars.push(c); cur.x1 = pt.box[2];
     });

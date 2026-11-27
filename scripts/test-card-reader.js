@@ -151,6 +151,14 @@ check('no text reader: the way up is the end where the bold title is, the darker
   assert.ok(upright > 0.15 && upside < 0.01, upright + ' vs ' + upside);
   assert.strictEqual(R.titleInk({ width: 10, height: 10, data: new Uint8ClampedArray(400) }, {}), null);
 });
+check('a card photographed on its side is a quarter turn, not a different card', () => {
+  const layout = { aspect: 0.7, marks: { tl: { x: 0.02, y: 0.02 }, tr: { x: 0.98, y: 0.02 }, br: { x: 0.98, y: 0.98 }, bl: { x: 0.02, y: 0.98 } } };
+  const sideways = [{ x: 40, y: 30 }, { x: 40, y: 900 }, { x: 700, y: 900 }, { x: 700, y: 30 }];
+  const turns = R.rotationCandidates(sideways, layout);
+  assert.deepStrictEqual(turns, [1, 3]);
+  const upright = [{ x: 40, y: 30 }, { x: 500, y: 40 }, { x: 510, y: 700 }, { x: 30, y: 690 }];
+  assert.deepStrictEqual(R.rotationCandidates(upright, layout), [0, 2]);
+});
 
 Promise.all(pending).then(() => {
   console.log('Low-resolution pictures');
