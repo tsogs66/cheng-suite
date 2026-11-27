@@ -25,8 +25,32 @@
     if (scope.tagName === 'TABLE') wrapOne(scope);
     scope.querySelectorAll('table').forEach(wrapOne);
   }
+  function labelPhoneCells(root) {
+    var narrow = window.innerWidth <= 599 || (window.innerHeight > 0 && window.innerHeight < 500 && window.innerWidth > window.innerHeight);
+    if (!narrow) return;
+    var scope = root && root.querySelectorAll ? root : document;
+    var tables = [];
+    if (scope.tagName === 'TABLE') tables.push(scope);
+    scope.querySelectorAll('table.fr-sheet, table.fr-table').forEach(function (t) { tables.push(t); });
+    tables.forEach(function (table) {
+      var heads = [];
+      table.querySelectorAll('thead th').forEach(function (th, i) {
+        heads[i] = (th.textContent || '').replace(/\s+/g, ' ').trim();
+      });
+      table.querySelectorAll('tbody tr').forEach(function (tr) {
+        var i = 0;
+        Array.prototype.forEach.call(tr.children, function (cell) {
+          if (cell.tagName === 'TD' && !cell.getAttribute('data-label') && heads[i]) {
+            cell.setAttribute('data-label', heads[i]);
+          }
+          i += 1;
+        });
+      });
+    });
+  }
   function bootTables() {
     wrapTables(document);
+    labelPhoneCells(document);
     if (!window.__chengTableObs && document.body) {
       var queue = [];
       var pending = false;
@@ -46,6 +70,7 @@
             var n = batch[k];
             if (!n.isConnected) continue;
             wrapTables(n);
+            labelPhoneCells(n);
           }
           obs.observe(document.body, { childList: true, subtree: true });
         });

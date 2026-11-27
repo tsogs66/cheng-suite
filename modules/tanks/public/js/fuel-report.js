@@ -369,7 +369,6 @@ const FuelReport = (() => {
         <td data-label="Method" data-phone="main">${methodCell}</td>
         <td data-label="Temp" data-phone="main"><input type="number" step="any" class="fr-narrow" data-row="${esc(row.tankId)}" data-field="tempC" data-sheet-popup="temp" value="${esc(f.tempC)}"></td>
         <td data-label="SG" data-phone="main"><input type="number" step="any" class="fr-wide" data-row="${esc(row.tankId)}" data-field="unitValue" data-sheet-popup="sg" value="${esc(f.unitValue)}"></td>
-        <td class="fr-check" data-label="In use" data-phone="more"><input type="checkbox" data-row="${esc(row.tankId)}" data-field="inUse" ${row.inUse ? 'checked' : ''}></td>
         ${COMPUTED_COLUMNS.map((c) =>
           `<td class="fr-calc" data-phone="${phoneMain[c.field] ? 'main' : 'more'}" data-label="${esc(c.label)}" data-fr-cell="${esc(row.tankId)}.${c.field}"></td>`).join('')}
       </tr>`;
@@ -382,14 +381,14 @@ const FuelReport = (() => {
           <thead>
             <tr>
               <th>TANK</th><th>ACTUAL (CM / M³)</th><th>METHOD</th><th>TEMP. (°C)</th>
-              <th>SG</th><th>TANK IN USE</th>
+              <th>SG</th>
               ${COMPUTED_COLUMNS.map((c) => `<th class="fr-calc-head">${esc(c.label)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>${rows}</tbody>
           <tfoot>
             <tr>
-              <th colspan="6">TOTAL — ${section.rows.length} tanks</th>
+              <th colspan="5">TOTAL — ${section.rows.length} tanks</th>
               <td class="fr-calc" data-fr-total="${esc(section.id)}.capacity100M3"></td>
               <td class="fr-calc" data-fr-total="${esc(section.id)}.capacity100MT"></td>
               <td class="fr-calc" data-fr-total="${esc(section.id)}.measuredM3"></td>
@@ -796,9 +795,7 @@ const FuelReport = (() => {
     for (const section of c.sections) {
       setCell(`[data-fr-section-note="${section.id}"]`,
         `100% capacity ${n(section.totals.capacity100MT, 2)} MT · 85% filling limit `
-        + `${n(section.totals.capacity85MT, 2)} MT · ${section.totals.tanksInUse} tank(s) in use`
-        + (section.totals.averageDensityInUse != null
-          ? ` · mean density in use ${n(section.totals.averageDensityInUse, 4)}` : '')
+        + `${n(section.totals.capacity85MT, 2)} MT`
         + (section.totals.movedIn
           ? ` · ${section.totals.movedIn} tank(s) counted here by fuel type` : '')
         + (section.totals.pinned
@@ -1543,7 +1540,6 @@ const FuelReport = (() => {
           <td>${esc(r.methodLabel)}</td>
           <td>SG</td>
           <td>${n(r.density15 != null ? r.density15 : r.unitValue, 4)}</td>
-          <td>${r.inUse ? 'YES' : ''}</td>
           <td>${pct(r.volumePercent)}</td>
         </tr>`);
       }
@@ -1574,7 +1570,7 @@ const FuelReport = (() => {
       <table class="fr-print-table">
         <thead><tr>
           <th class="fr-print-name">Tank</th><th>Fuel</th><th>Method</th>
-          <th>SG</th><th>Dens @15</th><th>In use</th><th>Vol %</th>
+          <th>SG</th><th>Dens @15</th><th>Vol %</th>
         </tr></thead>
         <tbody>${extraRows.join('')}</tbody>
       </table>

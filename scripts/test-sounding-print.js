@@ -19,14 +19,24 @@ function grab(src, name) {
   return rest.slice(0, name.length + next);
 }
 
-for (const name of ['printSectionTable', 'printConditionSection', 'printAnnexPage', 'printMasthead']) {
+for (const name of ['printSectionTable', 'printConditionSection', 'printMasthead']) {
   assert.strictEqual(grab(now, name), grab(v1, name), name + ' print markup matches v1');
 }
+/* Tank in use is display-only. It is the one print column allowed to leave v1. */
+function withoutInUse(src) {
+  return src
+    .replace(/\s*<th>In use<\/th>/g, '')
+    .replace(/\s*<td>\$\{r\.inUse \? 'YES' : ''\}<\/td>/g, '');
+}
+assert.strictEqual(withoutInUse(grab(now, 'printAnnexPage')), withoutInUse(grab(v1, 'printAnnexPage')));
+assert.doesNotMatch(grab(now, 'printAnnexPage'), /In use/);
+assert.match(grab(v1, 'printAnnexPage'), /In use/);
 assert.match(grab(now, 'printConditionSection'), /<th>Fuel<\/th>/);
 assert.match(grab(now, 'printConditionSection'), /fuelTypeLabel/);
 assert.match(grab(now, 'printSectionTable'), /fuelTypeLabel/);
 
 const screen = grab(now, 'renderSectionPanel');
+assert.doesNotMatch(screen, /data-field="inUse"/, 'the sheet does not offer a tank-in-use checkbox');
 assert.doesNotMatch(screen, /data-field="fuelType"/, 'the sheet does not offer a fuel-type select');
 assert.doesNotMatch(screen, />FUEL TYPE</, 'the sheet header has no Fuel Type column');
 assert.match(screen, /data-phone="main"/);

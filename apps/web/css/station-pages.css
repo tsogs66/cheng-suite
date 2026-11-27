@@ -196,21 +196,50 @@ html.station button.primary {
   html.station .fr-sheet tfoot,
   html.station .fr-sheet tr,
   html.station .fr-sheet th,
-  html.station .fr-sheet td {
+  html.station .fr-sheet td,
+  html.station table.fr-table tbody,
+  html.station table.fr-table tr,
+  html.station table.fr-table th,
+  html.station table.fr-table td {
     display: block;
     width: auto !important;
     min-width: 0 !important;
     white-space: normal;
     position: static;
   }
-  html.station .fr-sheet tbody tr {
+  html.station .fr-sheet tbody tr,
+  html.station table.fr-table tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 8px;
     margin: 0 0 8px;
     padding: 8px;
     border: 1px solid var(--line-strong);
     border-radius: 6px;
     background: #13202b;
   }
-  html.station .fr-sheet th.fr-tank-name {
+  html.station .fr-sheet tfoot tr {
+    display: block;
+  }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) tbody tr {
+    grid-template-areas:
+      "name name"
+      "sound method"
+      "temp sg"
+      "meas weight";
+  }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) th.fr-tank-name { grid-area: name; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-label="Sounding"] { grid-area: sound; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-label="Method"] { grid-area: method; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-label="Temp"] { grid-area: temp; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-label="SG"] { grid-area: sg; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-fr-cell$=".measuredM3"] { grid-area: meas; }
+  html.station table.fr-sheet:not(.bp-sheet):not(.bp-est-sheet):not(.bp-change-table) td[data-fr-cell$=".weightAirMT"] { grid-area: weight; }
+  html.station .fr-sheet th.fr-tank-name,
+  html.station table.bp-sheet tbody th,
+  html.station table.bp-est-sheet tbody th,
+  html.station table.fr-table tbody td:first-child {
+    grid-column: 1 / -1;
     font-size: 14px;
     font-weight: 650;
     padding: 0 0 6px;
@@ -236,10 +265,19 @@ html.station button.primary {
   html.station .fr-sheet th[data-phone="more"] { display: none; }
   html.station .fr-sheet tr.fr-open td[data-phone="more"] { display: block; }
   html.station .fr-sheet td.fr-actual-cell input,
-  html.station .fr-sheet td[data-label="Temp"] input {
-    font-size: 22px;
+  html.station .fr-sheet td[data-label="Temp"] input,
+  html.station .fr-sheet td[data-label="SG"] input,
+  html.station .fr-sheet td[data-label="Method"] select,
+  html.station table.bp-sheet tbody input,
+  html.station table.bp-sheet tbody select,
+  html.station table.fr-table tbody input {
     min-height: 44px;
     width: 100%;
+    box-sizing: border-box;
+  }
+  html.station .fr-sheet td.fr-actual-cell input,
+  html.station .fr-sheet td[data-label="Temp"] input {
+    font-size: 22px;
   }
   html.station .fr-sheet td[data-fr-cell$=".weightAirMT"] {
     font-size: 22px;
