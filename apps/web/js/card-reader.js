@@ -152,7 +152,7 @@
           tot++; if (gray[ry * w + rx] > 150) lit++;
         }
       }
-      return tot < 8 || lit / tot > 0.55;
+      return tot < 8 || lit / tot > 0.35;
     });
   }
 
@@ -392,6 +392,7 @@
   }
 
   function imageDataToCanvas(img) {
+    if (typeof document === 'undefined') return { style: {}, width: img.width, height: img.height };
     var c = document.createElement('canvas');
     c.width = img.width; c.height = img.height;
     c.getContext('2d').putImageData(new ImageData(img.data, img.width, img.height), 0, 0);
@@ -421,7 +422,7 @@
     digitsReady = (async function () {
       try {
         if (!root.ChengDigitReader) await loadScript(JS_DIR + 'digit-reader.js');
-        if (!root.CHENG_DIGIT_NET) await loadScript(VENDOR + 'digit-net.js');
+        if (!root.CHENG_DIGIT_NET && !root.ChengDigitReader.hasNet()) await loadScript(VENDOR + 'digit-net.js');
         if (!root.ChengDigitReader.hasNet()) root.ChengDigitReader.setNet(root.CHENG_DIGIT_NET);
         return true;
       } catch (e) { return false; }
@@ -467,13 +468,16 @@
         var ri = D.readNumber(ink, cw, chh, { allow: '0123456789', lineBottom: extra && extra.lineBottom });
         return { text: ri.text.replace(/\D/g, ''), conf: ri.conf, blank: !ri.text };
       }
+      var gram = root.ChengCardGrammar || (typeof require === 'function' ? require('./card-grammar.js') : null);
       if (type === 'number') {
-        var r = D.readNumber(ink, cw, chh, { allow: signed ? '0123456789.-' : '0123456789.', rejectWords: true, lineBottom: extra && extra.lineBottom, unit: extra && extra.unit });
-        return { text: cleanNumber(r.text), conf: r.conf, blank: !r.text };
+        var r = D.readNumber(ink, cw, chh, { allow: signed ? '0123456789.-' : '0123456789.', rejectWords: true, emptyIsZero: extra && extra.emptyIsZero, lineBottom: extra && extra.lineBottom, unit: extra && extra.unit });
+        var nt = (r.emptyWord && extra && extra.emptyIsZero) ? '0' : cleanNumber(r.text);
+        return { text: nt, conf: r.conf, blank: !nt };
       }
-      if (type === 'pair') {   // two numbers kept apart by a slash, like the two fresh-water tanks: 112/111
+      if (type === 'pair') {   // two numbers kept apart by a slash, like the two fresh-water tanks: 112/111, and optionally "= total"
         var rp = D.readNumber(ink, cw, chh, { allow: '0123456789./' });
-        return { text: rp.text.replace(/[^0-9.\/]/g, ''), conf: rp.conf, blank: !rp.text };
+        var pt = gram ? gram.apply('pair', rp.text) : rp.text.replace(/[^0-9.\/]/g, '');
+        return { text: pt, conf: rp.conf, blank: !pt };
       }
       /* time, date: the hand writes 1200H and 13 NOV 2026. The digit reader gives each word's length and place, so the day,
          the year and the time are taken as digits; the month name (letters) is read by Tesseract and matched to a month. */
@@ -481,11 +485,19 @@
       var dig = function (w, n) { return w && w.text.length >= n ? w.text.slice(0, n) : ''; };
       if (type === 'time') {
         var all = words.map(function (w) { return w.text; }).join('');
-        if (all.length < 3) return { text: '', conf: 0, blank: false };
-        var t4 = all.length >= 4 ? all.slice(0, 4) : '0' + all;
+        var linedT = D.readNumber(ink, cw, chh, { allow: '0123456789.' });
+        var clock = gram && (gram.canonTime(linedT.text) || gram.canonTime(all));
+        if (!clock && all.length >= 3) {
+          var t4 = all.length >= 4 ? all.slice(0, 4) : '0' + all;
+          clock = t4.slice(0, 2) + ':' + t4.slice(2);
+        }
         var cc = []; words.forEach(function (w) { w.chars.forEach(function (c) { cc.push(c.conf); }); });
-        return { text: t4.slice(0, 2) + ':' + t4.slice(2), conf: Math.min.apply(null, cc.slice(0, 4).concat([100])), blank: false };
+        return { text: clock || '', conf: cc.length ? Math.min.apply(null, cc.concat([100])) : 0, blank: !clock };
       }
+      /* 17-11-2026 and 17/11/2026 are digits and separators; a month word still uses the path below. */
+      var linedD = D.readNumber(ink, cw, chh, { allow: '0123456789.-/', dateSep: true });
+      var parsedD = gram ? (type === 'datetime' ? gram.canonDateTime(linedD.text) : gram.canonDate(linedD.text)) : '';
+      if (parsedD && (type === 'date' || / \d{2}:\d{2}$/.test(parsedD))) return { text: parsedD, conf: 74, blank: false };
       var month = await monthOf(prepared);
       /* a date written in numbers (17/11/2026) has its month as the second word */
       if (!month && words.length >= 3 && words[1].text.length <= 2 && +words[1].text >= 1 && +words[1].text <= 12) month = +words[1].text;
@@ -949,7 +961,7 @@
       var useLines = false;   // rubbing out the found lines and cutting wider was tried: the cells read worse
       if (useLines) { var ex = 5 / card.width, ey = 5 / card.height; cellRect = { x: f.rect.x - ex, y: f.rect.y - ey, w: f.rect.w + 2 * ex, h: f.rect.h + 2 * ey }; }
       var prep = prepareField(card, cellRect, useLines ? 1 : (f.tbl >= 0 ? 4 : 3), f.grow, f.tbl >= 0, useLines ? layout.ruleLines : null);
-      var r = f.type === 'text' ? { text: '', conf: 0, blank: prep.inkRatio < 0.004 } : await ocrField(worker, prep, f.type, /trim|heel|list|temp:?-/i.test(f.key), { lineBottom: !!f.grow && f.tbl < 0, unit: /°C|temp/i.test(f.label || '') || /^temp:|^sea$|^er$|^exh:|^t:\d+:(in|out)$|^acIn$|^acOut$|Temp$/.test(f.key) });
+      var r = f.type === 'text' ? { text: '', conf: 0, blank: prep.inkRatio < 0.004 } : await ocrField(worker, prep, f.type, /trim|heel|list|temp:?-/i.test(f.key), { lineBottom: !!f.grow && f.tbl < 0, emptyIsZero: /^cm:/.test(f.key), unit: /°C|temp/i.test(f.label || '') || /^temp:|^sea$|^er$|^exh:|^t:\d+:(in|out)$|^acIn$|^acOut$|Temp$/.test(f.key) });
       rows.push({ key: f.key, label: f.label, group: f.group, type: f.type, text: r.text, conf: r.conf, blank: r.blank, crop: imageDataToCanvas(prep.image) });
     }
     var boxes = layout.boxes.map(function (b) { return { key: b.key, label: b.label, group: b.group, dark: boxDarkness(card, b.rect) }; });
@@ -1303,6 +1315,14 @@
         bd.innerHTML = ''; ft.innerHTML = '';
         if (opts.remember && read) opts.remember(result);
         if (result && result.note) bd.appendChild(el('div', { class: 'ccr-hint', style: 'font-weight:700', text: result.note }));
+        if (root.ChengCardGrammar && result && result.rows) {
+          var bag = {};
+          result.rows.forEach(function (rr) { bag[rr.key] = rr.text; });
+          root.ChengCardGrammar.crossCheck(bag, { previous: opts.previous || null }).forEach(function (fl) {
+            bd.appendChild(el('div', { class: 'ccr-hint', text: fl.text }));
+            result.rows.forEach(function (rr) { if (rr.key === fl.key) rr.conf = Math.min(rr.conf || 0, 50); });
+          });
+        }
         bd.appendChild(el('div', { class: 'ccr-hint', text: 'Check every value against the picture beside it. Orange ones were hard to read. Empty boxes stay empty. Nothing is filled in until you press Use these values.' }));
         var inputs = {};
         var boxInputs = {};
