@@ -27,14 +27,10 @@ const DESK = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 const shots = [
   { file: 'aio-1366x768.png', w: 1366, h: 768, ua: DESK, url: base + '/' },
   { file: 'aio-1920x1080.png', w: 1920, h: 1080, ua: DESK, url: base + '/' },
-  { file: 'aio-1920x1080-touch-ua.png', w: 1920, h: 1080, ua: PHONE, url: base + '/' },
   { file: 'aio-360x800.png', w: 360, h: 800, ua: PHONE, url: base + '/' },
   { file: 'aio-430x932.png', w: 430, h: 932, ua: PHONE, url: base + '/' },
-  { file: 'aio-phone-landscape-800x360.png', w: 800, h: 360, ua: PHONE, url: base + '/' },
   { file: 'aio-tablet-800x1280.png', w: 800, h: 1280, ua: PHONE, url: base + '/' },
   { file: 'aio-tablet-1280x800.png', w: 1280, h: 800, ua: PHONE, url: base + '/' },
-  { file: 'aio-station-1366x768.png', w: 1366, h: 768, ua: DESK, url: base + '/?station=1' },
-  { file: 'aio-station-360x800.png', w: 360, h: 800, ua: PHONE, url: base + '/?station=1' },
 ];
 
 function waitHttp(url, tries) {
@@ -103,6 +99,60 @@ function waitHttp(url, tries) {
     });
   }
   await send('Page.enable');
+  await send('Page.navigate', { url: base + '/' });
+  await new Promise((r) => setTimeout(r, 600));
+  await send('Runtime.evaluate', {
+    expression: `(async () => {
+      const stores = ['meta','entries','receipts','documents','abstracts','printHistory','voyageLegs','voyageLegParts','orbEntries','deletedBackup','dbSnapshots','dbSnapshotParts','syncLog','syncPieces'];
+      const db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('noonReportDB', 11);
+        req.onupgradeneeded = () => {
+          const d = req.result;
+          stores.forEach((name) => {
+            if (d.objectStoreNames.contains(name)) return;
+            if (name === 'meta') d.createObjectStore(name, { keyPath: 'key' });
+            else if (name === 'deletedBackup') d.createObjectStore(name, { keyPath: 'trashId' });
+            else d.createObjectStore(name, { keyPath: 'id' });
+          });
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const setup = {
+        voyageNumber: '42', condition: 'L', imoNo: '9123456',
+        departPort: 'SINGAPORE', arrivePort: 'ROTTERDAM', voyageDistance: 8420,
+        pitch: 7.2, mcrRpm: 89, mcrKw: 12240, propLawExp: 3,
+        initDateTime: '2026-11-20T00:00',
+        fuelTanks: [
+          { id: 'vlsfo', name: 'VLSFO', unit: 'MT', capacity: 1800 },
+          { id: 'lsmgo', name: 'LSMGO', unit: 'MT', capacity: 280 },
+          { id: 'mdo', name: 'MDO', unit: 'MT', capacity: 160 }
+        ],
+        rob: { vlsfo: 1420, lsmgo: 210, mdo: 90 },
+        capacity: { vlsfo: 1800, lsmgo: 280, mdo: 160 }
+      };
+      const entry = {
+        id: 'e1', vesselId: 'harbour-key', voyageNumber: '42',
+        datetime: '2026-11-24T12:00', distanceShip: 980, speedShip: 12.4,
+        rpm: 78, slip: 4.2, kwEst: 8600, mcrPct: 62,
+        weather: { windDir: 'NE', windBft: 5, windKnots: 22, seaState: 4 }
+      };
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(['meta','entries'], 'readwrite');
+        const meta = tx.objectStore('meta');
+        meta.put({ key: 'vessels', value: [{ id: 'harbour-key', name: 'MV HARBOUR KEY', slug: 'harbour-key' }] });
+        meta.put({ key: 'activeVesselId', value: 'harbour-key' });
+        meta.put({ key: 'setup:harbour-key', value: setup });
+        tx.objectStore('entries').put(entry);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+      try { localStorage.removeItem('chengAioResume'); } catch (e) {}
+      return 'seeded';
+    })()`,
+    awaitPromise: true,
+  });
   for (const shot of shots) {
     await send('Emulation.setDeviceMetricsOverride', {
       width: shot.w,
