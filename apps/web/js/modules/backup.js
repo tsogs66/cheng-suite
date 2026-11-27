@@ -2381,6 +2381,12 @@
          server answers 401 and the library simply shows the Tank side, rather
          than failing the whole panel over a half-configured install. */
       async function voyageFleetRegister() {
+        /* No signed-in session: do not call the gateway. A 401 is a console
+           error even when we catch it, and the library already falls back to
+           the Tank side. */
+        let token = '';
+        try { token = localStorage.getItem('chengProSessionToken') || ''; } catch (_) { token = ''; }
+        if (!token) return { vessels: [], error: null };
         try {
           const data = await ChengProApi.api('/api/vessels');
           return { vessels: (data && data.vessels) || [], error: null };
