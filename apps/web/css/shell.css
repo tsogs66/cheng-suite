@@ -2264,6 +2264,16 @@ html.aio-suite .app { position: relative; z-index: 1; }
 html.aio-suite .main .panel {
   background: color-mix(in srgb, var(--panel-solid) 86%, transparent);
 }
+/* Vessel Setup is a long form. A translucent card lets the brass hull
+   cross the labels. Keep that art in the margin and the fields solid. */
+html.aio-suite .vessel-setup-page .panel {
+  background: var(--panel-solid);
+}
+html.aio-suite .vessel-setup-page .field input,
+html.aio-suite .vessel-setup-page .field select,
+html.aio-suite .vessel-setup-page .field textarea {
+  background: var(--bg2);
+}
 @keyframes aio-swell {
   0%, 100% { transform: translate3d(0, 12px, 0); }
   50% { transform: translate3d(-20px, 0, 0); }
