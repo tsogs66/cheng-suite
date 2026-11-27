@@ -73,4 +73,7 @@ assert.ok(!pages.includes('top: 100px'), 'monitoring titles are not pushed down 
 assert.ok(pages.includes('html.station:has(.bk-nav) .scroll-x thead th'), 'sheet titles stick under the tab strip');
 assert.ok(pages.includes('top: 56px'), 'sheet titles clear the tab strip');
 assert.ok(pages.includes('scrollbar-color: #e2a84a #1a2834'), 'the sideways page scroll is visible from 600px up');
+assert.ok(pages.includes('width: 8ch'), 'sounding inputs are a few digits wide');
+assert.ok(pages.includes('max-width: 9ch'), 'sounding inputs do not grow to a sentence');
+assert.ok(pages.includes('font-variant-numeric: tabular-nums'), 'sounding figures line up');
 console.log('library nav ok');

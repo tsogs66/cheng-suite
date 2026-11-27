@@ -394,6 +394,68 @@ html.station:has(.bk-nav) .table-scroll thead th {
     min-height: 44px;
   }
 }
+/* v1 sheet: a figure is a few digits, the tank name is the words, and the
+   columns share that. A 100% input was growing to a sentence. */
+@media (min-width: 600px) and (min-height: 501px) {
+  html.station table.fr-sheet,
+  html.station table.fr-table,
+  html.station table.bunker-table {
+    min-width: 0;
+    width: max-content;
+    font-variant-numeric: tabular-nums;
+  }
+  html.station table.fr-sheet thead th,
+  html.station table.fr-table thead th,
+  html.station table.bunker-table thead th {
+    min-width: 0;
+    white-space: normal;
+  }
+  html.station table.fr-sheet thead th:not(:first-child),
+  html.station table.fr-table thead th:not(:first-child),
+  html.station table.bunker-table thead th:not(:first-child),
+  html.station table.fr-sheet td.fr-calc {
+    max-width: 9ch;
+  }
+  html.station table.fr-sheet th.fr-tank-name,
+  html.station table.fr-table td:first-child,
+  html.station table.bunker-table td:first-child,
+  html.station table.bunker-table th:first-child {
+    width: auto;
+    min-width: 0;
+    white-space: nowrap;
+  }
+  html.station table.bp-sheet tbody th.fr-tank-name select {
+    width: max-content;
+    min-width: max-content;
+    max-width: none;
+  }
+  html.station table.fr-sheet tbody td input[type="number"],
+  html.station table.fr-table tbody td input[type="number"],
+  html.station table.bunker-table tbody td input[type="number"],
+  html.station table.data-table tbody td input[type="number"] {
+    width: 8ch;
+    min-width: 7ch;
+    max-width: 9ch;
+    box-sizing: border-box;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+  html.station table.fr-sheet tbody td input.fr-narrow {
+    width: 7ch;
+    max-width: 7ch;
+  }
+  html.station table.fr-sheet tbody td select {
+    width: 8ch;
+    min-width: 7ch;
+    max-width: 9ch;
+    box-sizing: border-box;
+    text-align: left;
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+}
 @keyframes fr-sheet-edge {
   from { box-shadow: inset -18px 0 14px -8px rgba(226, 168, 74, 0.9); }
   to { box-shadow: inset 0 0 0 transparent; }
