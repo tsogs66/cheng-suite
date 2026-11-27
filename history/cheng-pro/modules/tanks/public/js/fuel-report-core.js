@@ -1,0 +1,925 @@
+/**
+ * Fuel Oil Report ("TANK CONDITION") core — the workbook Data-entry sheet and
+ * its printed Report sheet, reproduced for the app.
+ *
+ * Shared by both sides: loaded as a plain <script> in the SPA (picking up the
+ * calc globals from /js/calc.js) and require()d from server/index.js, so a
+ * report computes identically online, offline and on the server.
+ *
+ * Sheet mapping (TANK MANAGEMENT … .xlsm):
+ *   Data!H   raw sounding/ullage input (mm)      -> row.reading
+ *   Data!V   1 = Dip, 2 = Ullage                 -> row.method
+ *   Data!AD  1 HFO / 2 LSFO / 3 MDO-MGO / 4 LSMGO -> row.fuelType
+ *   Data!U   "tank in use" tick                  -> row.inUse
+ *   Data!T   petroleum unit standard             -> row.unit
+ *   Data!L   petroleum unit value                -> row.unitValue
+ *   Data!D   volume 100% m3   Report!C  = D * 0.96  (capacity in MT)
+ *   Data!I   observed volume  Data!O = I / D        (volume %)
+ *   Data!M   density @15      Data!N = VCF 54B
+ *   Data!P   GSV = I * VCF    Data!Q = WCF 56   Data!R = P * Q (weight in air)
+ *   Data!O30:R30  grade totals     Data!O31:R31 log book     Data!O32:R32 difference
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory(require('../../server/calc'));
+  } else {
+    // Browser: /js/calc.js has already defined its helpers as globals.
+    root.FuelReportCore = factory(root);
+  }
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (calc) {
+'use strict';
+
+const {
+  computeTank,
+  vcfDetail54B,
+  wcf56,
+  lerpLookup,
+  toTableReading,
+  usesDirectM3Input,
+  isDoubleInterpManualTank,
+} = calc;
+
+/** Report types — workbook Data!Y3:Y9 / Data!U28. */
+const REPORT_TYPES = [
+  'Arrival',
+  'Departure',
+  'Monitoring',
+  'Pre-Bunkering',
+  'Bunker Survey',
+  'Bunker Survey - Charterer',
+  'Bunker Survey - Owner',
+];
+
+/** Grade buckets the weights are totalled into — workbook Data!AD7:AD10.
+ *  Printouts keep residual (HFO/VLSFO) totals separate from distillate
+ *  (MO/MGO/LSMGO) — never one combined fuel figure. */
+const FUEL_TYPES = [
+  { id: 'hfo', label: 'HFO', section: 'fuel', group: 'residual' },
+  { id: 'lsfo', label: 'VLSFO', section: 'fuel', group: 'residual' },
+  { id: 'mdo', label: 'MDO/MGO', section: 'do', group: 'distillate' },
+  { id: 'lsmgo', label: 'LSMGO', section: 'do', group: 'distillate' },
+];
+
+/** Petroleum unit standards — workbook Data!T7:T10. */
+const UNIT_STANDARDS = [
+  { id: 'den15', label: 'DEN @ 15 C' },
+  { id: 'api60', label: 'API @ 60 F' },
+  { id: 'rd60', label: 'RD @ 60 F' },
+  { id: 'sg15', label: 'SG @ 15 C' },
+];
+
+const METHODS = [
+  { id: 'ullage', label: 'ULLAGE' },
+  { id: 'dip', label: 'DIP' },
+];
+
+/** Legacy heel presets (reports now use a free numeric heel field). */
+const HEEL_OPTIONS = [-4, -3, -2, -1, 0, 1, 2, 3, 4];
+
+const SECTIONS = [
+  {
+    id: 'fuel',
+    title: 'HFO / VLSFO',
+    grades: ['hfo', 'lsfo'],
+    totalLabel: 'HFO/VLSFO TOTAL',
+    shortLabel: 'HFO/VLSFO',
+  },
+  {
+    id: 'do',
+    title: 'MO / MGO / LSMGO',
+    grades: ['mdo', 'lsmgo'],
+    totalLabel: 'MO/MGO/LSMGO TOTAL',
+    shortLabel: 'MO/MGO/LSMGO',
+  },
+];
+
+/** Workbook Report!C11 = 100% m3 * 0.96 (tonnage capacity of a full tank). */
+const CAPACITY_MT_FACTOR = 0.96;
+/** Workbook Report!E22 — safe filling limit applied to the tonnage capacity. */
+const SAFE_FILL_RATIO = 0.85;
+/** Workbook Report!D35 = litres * 0.882 (lube oil density). */
+const LUBE_DENSITY = 0.882;
+
+const LUBE_FIELDS = [
+  { id: 'cylHigh', label: 'CYL. OIL HIGH TBN' },
+  { id: 'cylLow', label: 'CYL. OIL LOW TBN' },
+  { id: 'meSystem', label: 'M/E SYSTEM OIL' },
+  { id: 'dgSystem', label: 'D/G SYSTEM OIL' },
+];
+
+const RECEIVED_FIELDS = [
+  { id: 'hfo', label: 'HFO' },
+  { id: 'lsHfo', label: 'VLSFO' },
+  { id: 'mdoMgo', label: 'MO / MGO / LSMGO' },
+  { id: 'water', label: 'FRESH WATER' },
+];
+
+const CONSUMPTION_FIELDS = [
+  { id: 'atSea', label: 'At sea' },
+  { id: 'atAnchor', label: 'At Anchorage' },
+  { id: 'atPort', label: 'In Port' },
+];
+
+function num(v, fallback = null) {
+  if (v === '' || v === null || v === undefined) return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function round(v, d = 3) {
+  if (v == null || !Number.isFinite(Number(v))) return null;
+  const f = Math.pow(10, d);
+  return Math.round(Number(v) * f) / f;
+}
+
+/** 'sounding' / 'dip' / 'depth' all mean "measured from the tank bottom". */
+function normalizeMethod(method) {
+  return /dip|sound|depth/i.test(String(method || '')) ? 'dip' : 'ullage';
+}
+
+/**
+ * Sounding-pipe height used to flip a reading between ullage and dip.
+ * Workbook Setup!C — here taken from the tank, falling back to the top of the
+ * calibration axis (the giorgis tables run 0 … pipe height in mm).
+ */
+function soundingPipeHeight(tank) {
+  const explicit = num(tank && tank.pipeHeight, 0);
+  if (explicit > 0) return explicit;
+  const axes = [tank && tank.trimAxis, tank && tank.listAxis, tank && tank.volumeCurve && tank.volumeCurve.x];
+  let max = 0;
+  for (const axis of axes) {
+    if (!Array.isArray(axis) || !axis.length) continue;
+    for (const v of axis) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+  }
+  return max;
+}
+
+/**
+ * Read MGO / MDO / LSMGO / HFO off the tank title.
+ *
+ * FLAG EVI and older imports often store fuelGrade as hfo (the form default)
+ * even when the plate says M.G.O. or LSMGO. Dots and spaces are stripped so
+ * "M.G.O. STORAGE TK" and "L.S.M.G.O." match the same as "MGO" / "LSMGO".
+ */
+function fuelGradeFromName(name) {
+  const u = String(name || '').toUpperCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
+  if (!u) return null;
+  if (/\bLSMGO\b|LS\s*MGO/.test(u)) return 'lsmgo';
+  if (/\bMGO\b|GAS OIL/.test(u)) return 'mgo';
+  if (/\bMDO\b|\bDIESEL\b/.test(u)) return 'mdo';
+  if (/VLSFO|ULSFO|\bLSFO\b|LS HFO|LS FO/.test(u)) return 'lsfo';
+  if (/\bHFO\b/.test(u)) return 'hfo';
+  return null;
+}
+
+function isDistillateGrade(grade) {
+  const g = String(grade || '').toLowerCase();
+  return g === 'mdo' || g === 'mgo' || g === 'lsmgo';
+}
+
+/**
+ * Grade used for home-section and default fuel type.
+ * A stored distillate grade wins. A name that is clearly MGO/MDO/LSMGO wins
+ * over a leftover residual default, because those oils are not HFO/VLSFO.
+ */
+function resolvedFuelGrade(tank) {
+  const stored = String((tank && tank.fuelGrade) || '').toLowerCase().trim();
+  const inferred = fuelGradeFromName(tank && tank.name);
+  if (isDistillateGrade(stored)) return stored;
+  if (isDistillateGrade(inferred)) return inferred;
+  if (stored && stored !== 'other') return stored;
+  return inferred || 'hfo';
+}
+
+/**
+ * The grade name the Bunker plans and Voyage Chief use for a tank: HFO, LSFO, MDO/MGO or LSMGO. A tank keeps its grade in
+ * lower case (hfo, lsfo, mdo, mgo) and a plan looks for the upper-case name, so the two never matched and the ROB buttons
+ * came back empty.
+ */
+function robGradeLabel(tank) {
+  const g = resolvedFuelGrade(tank);
+  if (g === 'lsmgo') return 'LSMGO';
+  if (g === 'mdo' || g === 'mgo') return 'MDO/MGO';
+  if (g === 'lsfo' || g === 'vlsfo' || g === 'ulsfo') return 'LSFO';
+  return 'HFO';
+}
+
+/** Weight by air (MT) of every sounded fuel tank, added up by plan grade name. readingOf(tankId) gives the tank's reading. */
+function robByGradeLabel(tanks, readingOf) {
+  const out = {};
+  (tanks || []).forEach((t) => {
+    const r = readingOf ? readingOf(t.id) : null;
+    const wt = r && r.result ? Number(r.result.weightMT) : NaN;
+    if (!Number.isFinite(wt) || !(wt > 0)) return;
+    const k = robGradeLabel(t);
+    out[k] = (out[k] || 0) + wt;
+  });
+  return out;
+}
+
+/** Default grade bucket for a tank, from its calibration-DB fuel grade. */
+function defaultFuelType(tank) {
+  const grade = resolvedFuelGrade(tank);
+  if (grade === 'lsfo') return 'lsfo';
+  if (grade === 'mgo' || grade === 'mdo' || grade === 'lsmgo') return grade === 'lsmgo' ? 'lsmgo' : 'mdo';
+  return 'hfo';
+}
+
+/** Which printed block a tank belongs to by its calibration-DB grade. */
+function sectionForTank(tank) {
+  return isDistillateGrade(resolvedFuelGrade(tank)) ? 'do' : 'fuel';
+}
+
+/**
+ * Grade stored on the tank when Monitoring says it is carrying `fuelType`.
+ * The "mdo" bucket is MDO/MGO: an MGO plate or an MGO grade stays mgo.
+ */
+function gradeForCarriedType(tank, fuelType) {
+  const id = String(fuelType || '').toLowerCase();
+  const stored = String((tank && tank.fuelGrade) || '').toLowerCase().trim();
+  const inferred = fuelGradeFromName(tank && tank.name);
+  if (id === 'mdo') {
+    if (stored === 'mgo' || inferred === 'mgo') return 'mgo';
+    return 'mdo';
+  }
+  if (id === 'hfo' || id === 'lsfo' || id === 'mgo' || id === 'lsmgo') return id;
+  return null;
+}
+
+/**
+ * Write the fuel the tank is carrying onto the tank record.
+ *
+ * An HFO tank whose Monitoring row is LSMGO stores lsmgo, so the drawing,
+ * the home section and a later sync all share that identity. A plate that
+ * says MDO/MGO/LSMGO with a leftover hfo grade is repaired the same way.
+ * A saved row that still says hfo only because the import defaulted the
+ * grade does not wipe that plate. Returns which parts changed.
+ */
+function applyCarriedFuelGrades(bundle, form) {
+  const tanks = bundle && bundle.tanks && bundle.tanks.fuel;
+  const rows = (form && form.rows) || {};
+  const changed = { tanks: false, form: false };
+  if (!Array.isArray(tanks)) return changed;
+  for (const tank of tanks) {
+    if (!tank || !tank.id) continue;
+    const row = rows[tank.id];
+    const carried = row && row.fuelType ? String(row.fuelType).toLowerCase() : '';
+    const stored = String(tank.fuelGrade || '').toLowerCase().trim();
+    const homeType = defaultFuelType(tank);
+    let next = null;
+    if (carried && carried !== homeType) {
+      const leftover = stored === '' || stored === 'hfo' || stored === 'other';
+      const named = fuelGradeFromName(tank.name);
+      if (carried === 'hfo' && leftover && isDistillateGrade(named)) {
+        next = named;
+        const repaired = defaultFuelType({ name: tank.name, fuelGrade: next, category: tank.category });
+        if (row.fuelType !== repaired) {
+          row.fuelType = repaired;
+          changed.form = true;
+        }
+      } else {
+        next = gradeForCarriedType(tank, carried);
+      }
+    } else if (stored === '' || stored === 'hfo' || stored === 'other') {
+      const resolved = resolvedFuelGrade(tank);
+      if (resolved && resolved !== stored) next = resolved;
+    }
+    if (next && next !== stored) {
+      tank.fuelGrade = next;
+      changed.tanks = true;
+    }
+  }
+  return changed;
+}
+
+/** The block a fuel type belongs in — MDO/MGO and LSMGO are diesel/gas oil. */
+function sectionForFuelType(fuelType) {
+  const entry = FUEL_TYPES.find((f) => f.id === fuelType);
+  return entry ? entry.section : 'fuel';
+}
+
+/**
+ * Which block a row is actually printed in.
+ *
+ * It follows the fuel type the tank is carrying, so an HFO tank run on LSMGO
+ * counts under DIESEL OIL / GAS OIL and each block totals only what is really
+ * in it. For a tank left on its own grade this is the same answer as the
+ * calibration DB gives, so nothing moves unless the fuel type says so.
+ *
+ * `row.section` pins a row to one block when the automatic answer is not
+ * wanted; '' (the default) means follow the fuel type.
+ */
+function sectionForRow(tank, rowForm) {
+  const pinned = rowForm && rowForm.section;
+  if (pinned === 'fuel' || pinned === 'do') return pinned;
+  const fuelType = (rowForm && rowForm.fuelType) || defaultFuelType(tank);
+  return sectionForFuelType(fuelType);
+}
+
+function fuelTanks(bundle) {
+  return ((bundle && bundle.tanks && bundle.tanks.fuel) || []).filter(Boolean);
+}
+
+/**
+ * UI soundings are entered in centimetres. Calibration tables and stored
+ * readings use the table's native axis units (mm common; metres when the
+ * depth/ullage column has decimals). Helpers accept an optional tank so the
+ * conversion matches detectSoundingUnit().
+ */
+const SOUNDING_MM_PER_CM = 10;
+function soundingUnitOf(tank) {
+  if (typeof detectSoundingUnit === 'function') return detectSoundingUnit(tank);
+  if (calc && typeof calc.detectSoundingUnit === 'function') return calc.detectSoundingUnit(tank);
+  return 'mm';
+}
+function mmToCm(mm, tank) {
+  const v = num(mm);
+  if (v == null) return null;
+  if (tank != null && typeof tableUnitsToCm === 'function') return round(tableUnitsToCm(v, tank), 4);
+  if (tank != null && calc && typeof calc.tableUnitsToCm === 'function') {
+    return round(calc.tableUnitsToCm(v, tank), 4);
+  }
+  return round(v / SOUNDING_MM_PER_CM, 2);
+}
+function cmToMm(cm, tank) {
+  const v = num(cm);
+  if (v == null) return null;
+  if (tank != null && typeof cmToTableUnits === 'function') return round(cmToTableUnits(v, tank), 4);
+  if (tank != null && calc && typeof calc.cmToTableUnits === 'function') {
+    return round(calc.cmToTableUnits(v, tank), 4);
+  }
+  return round(v * SOUNDING_MM_PER_CM, 1);
+}
+function formatCm(mm, tank) {
+  const cm = mmToCm(mm, tank);
+  return cm == null ? '' : String(cm);
+}
+
+function formatActualInput(reading, tank) {
+  if (typeof usesDirectM3Input === 'function' && usesDirectM3Input(tank)) {
+    if (reading === '' || reading == null) return '';
+    const v = num(reading);
+    return v == null ? '' : String(round(v, 3));
+  }
+  return formatCm(reading, tank);
+}
+
+/**
+ * SG column is always treated as density @15°C (kg/L). Legacy API/RD/SG
+ * unit standards are ignored so every sheet uses dens @15.
+ */
+function densityFromUnit(_unit, unitValue, _conversion) {
+  const value = num(unitValue);
+  if (value == null) return { density15: null, source: 'no SG / dens @15°C entered' };
+  if (value <= 0) return { density15: null, source: 'SG / dens @15°C must be greater than zero' };
+  return { density15: value, source: 'entered as density @15°C (SG column)' };
+}
+
+/** A blank row seeded from the tank definition and its last saved reading. */
+function defaultRow(tank, reading) {
+  const r = reading || {};
+  return {
+    fuelType: defaultFuelType(tank),
+    reading: r.reading != null ? r.reading : '',
+    method: normalizeMethod(r.entryMethod || r.method || tank.soundingMethod),
+    tempC: r.tempC != null ? r.tempC : '',
+    unit: 'den15',
+    unitValue: r.density15 != null ? r.density15 : '',
+    inUse: false,
+    // '' = follow the fuel type; 'fuel' / 'do' = pinned to a block by the user.
+    section: '',
+  };
+}
+
+function emptyFuelReport(bundle) {
+  const voyage = (bundle && bundle.voyage) || {};
+  const rows = {};
+  for (const tank of fuelTanks(bundle)) {
+    rows[tank.id] = defaultRow(tank, (bundle.readings || {})[tank.id]);
+  }
+  const date = voyage.date || new Date().toISOString().slice(0, 10);
+  const time = voyage.time || '12:00';
+  return {
+    header: {
+      voyageNo: voyage.voyageNo || '',
+      date,
+      time,
+      reportType: REPORT_TYPES.includes(voyage.reportType) ? voyage.reportType : 'Monitoring',
+      port: voyage.port || '',
+      draftFwd: voyage.draftFwd != null ? voyage.draftFwd : '',
+      draftAft: voyage.draftAft != null ? voyage.draftAft : '',
+      heel: voyage.heel != null ? voyage.heel : 0,
+      engineRoomTemp: voyage.engineRoomTemp != null ? voyage.engineRoomTemp : '',
+      seaTemp: voyage.seaTemp != null ? voyage.seaTemp : '',
+    },
+    rows,
+    logbook: { hfo: '', lsfo: '', mdo: '', lsmgo: '' },
+    lube: { cylHigh: '', cylLow: '', meSystem: '', dgSystem: '' },
+    received: { hfo: '', lsHfo: '', mdoMgo: '', water: '' },
+    consumption: {
+      atSea: '', atAnchor: '', atPort: '',
+      boilerSea: '', boilerAnchor: '', boilerPort: '',
+    },
+    /* Who signs is the ship's business, not this sheet's: the name comes from
+       the vessel record that Vessel Setup writes, so it is entered once for
+       the ship instead of on every printout. */
+    signature: { preparedBy: String(((bundle && bundle.vessel) || {}).chiefEngineer || '').trim(), rank: 'Chief Engineer' },
+    options: { capacityMtFactor: CAPACITY_MT_FACTOR, lubeDensity: LUBE_DENSITY },
+    updatedAt: null,
+  };
+}
+
+/**
+ * Signature fields, with a blank stored value falling back to the vessel's.
+ *
+ * A plain spread would not do. Every sheet saved while the Prepared-by boxes
+ * existed carries `preparedBy: ''` if they were left empty, and spreading that
+ * over the default would blank out the Chief Engineer that Vessel Setup now
+ * supplies -- the printout would go back to showing a dash.
+ *
+ * A stored name that is NOT blank is kept, deliberately. A sheet filed under a
+ * previous Chief is a record of who signed it, and reprinting it under the
+ * incoming officer's name would be a false document. The same reasoning files
+ * signature images by name.
+ */
+function mergeSignature(base, src) {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(src || {})) {
+    const val = typeof v === 'string' ? v.trim() : v;
+    if (val !== '' && val != null) out[k] = v;
+  }
+  return out;
+}
+
+/** Merge a stored form over the defaults so new tanks always get a row. */
+function normalizeForm(bundle, form) {
+  const base = emptyFuelReport(bundle);
+  const src = form || {};
+  const rows = {};
+  for (const tank of fuelTanks(bundle)) {
+    const incoming = (src.rows || {})[tank.id] || {};
+    const row = { ...base.rows[tank.id], ...incoming };
+    if (!row.method) row.method = normalizeMethod(row.entryMethod || base.rows[tank.id].method);
+    rows[tank.id] = row;
+  }
+  return {
+    header: { ...base.header, ...(src.header || {}) },
+    rows,
+    logbook: { ...base.logbook, ...(src.logbook || {}) },
+    lube: { ...base.lube, ...(src.lube || {}) },
+    received: { ...base.received, ...(src.received || {}) },
+    consumption: { ...base.consumption, ...(src.consumption || {}) },
+    signature: mergeSignature(base.signature, src.signature),
+    options: { ...base.options, ...(src.options || {}) },
+    updatedAt: src.updatedAt || null,
+  };
+}
+
+/**
+ * Which way the ship is down, in the sign the calibration book prints.
+ *
+ * The trim columns are headed TRIM BY STEM on the positive side and TRIM BY
+ * STERN on the negative, so a positive trim is down by the bow.
+ */
+function trimSense(trim) {
+  const t = num(trim, 0) || 0;
+  if (Math.abs(t) < 0.005) return 'even keel';
+  return t > 0 ? 'by bow' : 'by stern';
+}
+
+function trimLabel(trim) {
+  const t = num(trim, 0) || 0;
+  if (Math.abs(t) < 0.005) return 'even keel';
+  return `${Math.abs(t).toFixed(2)} m ${trimSense(t)}`;
+}
+
+/** Ullage and dip in mm from the entered sounding and the sounding-pipe height. */
+function soundingPair(method, reading, pipeHeight) {
+  if (reading == null) return { ullageMm: null, dipMm: null };
+  const pipe = num(pipeHeight, 0) || 0;
+  const other = pipe > 0 ? round(pipe - reading, 1) : null;
+  if (method === 'dip') return { dipMm: round(reading, 1), ullageMm: other };
+  return { ullageMm: round(reading, 1), dipMm: other };
+}
+
+function heelLabel(heel) {
+  const h = num(heel, 0) || 0;
+  if (!h) return 'upright';
+  return `${Math.abs(h)}° to ${h > 0 ? 'starboard' : 'port'}`;
+}
+
+/**
+ * Compute one report row: reading -> volume -> VCF/WCF -> weight in air,
+ * keeping every intermediate for the printed calculation annex.
+ */
+function computeRow(tank, rowForm, ctx) {
+  const row = rowForm || {};
+  const section = sectionForRow(tank, row);
+  const fuelType = FUEL_TYPES.some((f) => f.id === row.fuelType) ? row.fuelType : defaultFuelType(tank);
+  const method = normalizeMethod(row.method || row.entryMethod);
+  const unit = 'den15';
+  const reading = num(row.reading);
+  const tempC = num(row.tempC, 15);
+  const capacity = num(tank.capacity, 0) || 0;
+  const { density15, source: densitySource } = densityFromUnit(unit, row.unitValue, ctx.conversion);
+
+  const directM3 = usesDirectM3Input(tank);
+  const doubleInterpManual = isDoubleInterpManualTank(tank);
+  const nativeMethod = normalizeMethod(tank.soundingMethod);
+  const pipeHeight = soundingPipeHeight(tank);
+  // Calibration tables are sounding-from-bottom on Veniamis correction tanks even
+  // when the user enters ullage. computeTank converts entry → table scale (Excel
+  // Setup!F) before trim; trim itself stays the direct by-stern value.
+  const tableReading = directM3 || reading == null
+    ? reading
+    : ((typeof toTableReading === 'function')
+      ? toTableReading(tank, reading, method)
+      : (method !== nativeMethod && pipeHeight > 0 ? pipeHeight - reading : reading));
+  const flipped = !directM3 && reading != null && tableReading != null && Math.abs(tableReading - reading) > 1e-9;
+
+  const pair = soundingPair(method, reading, pipeHeight);
+  const out = {
+    tankId: tank.id,
+    name: tank.name || tank.id,
+    side: tank.side || '',
+    fuelRole: tank.fuelRole || '',
+    calcType: tank.calcType || 'direct',
+    directM3Input: directM3,
+    doubleInterpManual,
+    soundingUnit: soundingUnitOf(tank),
+    tankGrade: tank.fuelGrade || '',
+    section,
+    homeSection: sectionForTank(tank),
+    moved: section !== sectionForTank(tank),
+    fuelType,
+    fuelTypeLabel: (FUEL_TYPES.find((f) => f.id === fuelType) || {}).label || fuelType,
+    // Pinned rows are the ones the user held in place against the fuel type.
+    pinned: Boolean(row.section === 'fuel' || row.section === 'do'),
+    autoSection: sectionForFuelType(fuelType),
+    // True when a pin is holding the row away from where its fuel type puts it.
+    sectionMismatch: sectionForFuelType(fuelType) !== section,
+    reading: reading != null ? reading : '',
+    method,
+    methodLabel: method === 'dip' ? 'DIP' : 'ULLAGE',
+    ullageMm: pair.ullageMm,
+    dipMm: pair.dipMm,
+    tempC: row.tempC === '' || row.tempC == null ? '' : tempC,
+    unit,
+    unitLabel: (UNIT_STANDARDS.find((u) => u.id === unit) || {}).label || unit,
+    unitValue: row.unitValue === '' || row.unitValue == null ? '' : num(row.unitValue),
+    inUse: Boolean(row.inUse),
+    capacity100M3: round(capacity, 3),
+    capacity100MT: round(capacity * ctx.capacityMtFactor, 3),
+    capacity85M3: round(capacity * SAFE_FILL_RATIO, 3),
+    measuredM3: null,
+    volumePercent: null,
+    density15: density15 != null ? round(density15, 4) : null,
+    densitySource,
+    vcf: null,
+    gsv15M3: null,
+    wcf: null,
+    weightAirMT: null,
+    warnings: [],
+    trace: {
+      nativeMethod,
+      pipeHeight: pipeHeight || null,
+      flipped,
+      nativeReading: tableReading != null ? round(tableReading, 3) : null,
+      trimUsed: ctx.trim,
+      heelUsed: ctx.heel,
+    },
+  };
+
+  if (reading == null) {
+    out.warnings.push('no sounding entered');
+    return out;
+  }
+  if (flipped && pipeHeight <= 0) out.warnings.push('no sounding-pipe height to convert dip/ullage');
+
+  const result = computeTank(tank, {
+    reading,
+    trim: directM3 ? 0 : ctx.trim,
+    list: directM3 ? 0 : ctx.heel,
+    tempC,
+    density15,
+    gaugeType: directM3 ? 'volume' : 'meter',
+    entryMethod: directM3 ? (tank.soundingMethod || 'gaugeDirectM3') : method,
+  });
+
+  out.measuredM3 = round(result.volumeObserved, 3);
+  out.volumePercent = capacity > 0 ? round((result.volumeObserved / capacity) * 100, 1) : null;
+  out.trace.soundingIncrement = result.soundingIncrement;
+  out.trace.heelIncrement = result.heelIncrement;
+  out.trace.trimCorrection = round(result.trimCorrection, 4);
+  out.trace.listCorrection = round(result.listCorrection, 4);
+  out.trace.correctedReading = round(result.correctedReading, 3);
+  out.trace.soundingFromBottom = round(result.soundingFromBottom, 3);
+
+  if (density15 == null) {
+    out.warnings.push('no density — weight not computed');
+    return out;
+  }
+
+  const vcfDetail = vcfDetail54B(density15, tempC);
+  out.vcf = vcfDetail.vcf;
+  out.gsv15M3 = round(result.correctedVolume15, 3);
+  out.wcf = round(wcf56(density15), 4);
+  out.weightAirMT = round(result.weightMT, 3);
+  out.trace.vcf = vcfDetail;
+  out.trace.wcfFormula = 'density@15 − 0.0011 (air buoyancy, ASTM Table 56)';
+  if (capacity > 0 && result.volumeObserved > capacity) out.warnings.push('above 100% capacity');
+  return out;
+}
+
+function sumRows(rows, key) {
+  return rows.reduce((acc, r) => acc + (num(r[key], 0) || 0), 0);
+}
+
+/**
+ * Build the whole report: header, both tank blocks, grade totals against the
+ * log book, lube oil, received quantities and daily consumption.
+ */
+function computeFuelReport(bundle, form, conversion) {
+  const normalized = normalizeForm(bundle, form);
+  const header = normalized.header;
+  const capacityMtFactor = num(normalized.options.capacityMtFactor, CAPACITY_MT_FACTOR) || CAPACITY_MT_FACTOR;
+  const lubeDensity = num(normalized.options.lubeDensity, LUBE_DENSITY) || LUBE_DENSITY;
+
+  const draftFwd = num(header.draftFwd, 0) || 0;
+  const draftAft = num(header.draftAft, 0) || 0;
+  const meanDraft = (draftFwd + draftAft) / 2;
+  // One signed trim, printed the way the calibration book heads its columns
+  // and shown the way the monitoring page shows it: positive down by the bow
+  // (TRIM BY STEM), negative down by the stern (TRIM BY STERN). Carrying a
+  // second, negated "by the stern" figure beside it is what let the tank card
+  // and the monitoring page disagree by a sign on the same ship.
+  const trim = draftFwd - draftAft;
+  const heel = num(header.heel, 0) || 0;
+
+  const ctx = { conversion, capacityMtFactor, trim, heel };
+
+  const sections = SECTIONS.map((section) => ({
+    id: section.id,
+    title: section.title,
+    grades: section.grades,
+    rows: [],
+  }));
+  const byId = new Map(sections.map((s) => [s.id, s]));
+
+  for (const tank of fuelTanks(bundle)) {
+    const out = computeRow(tank, normalized.rows[tank.id], ctx);
+    (byId.get(out.section) || sections[0]).rows.push(out);
+  }
+
+  for (const section of sections) {
+    const capacityMT = sumRows(section.rows, 'capacity100MT');
+    const inUse = section.rows.filter((r) => r.inUse && r.density15 != null);
+    section.totals = {
+      tanks: section.rows.length,
+      capacity100M3: round(sumRows(section.rows, 'capacity100M3'), 3),
+      capacity100MT: round(capacityMT, 3),
+      capacity85MT: round(capacityMT * SAFE_FILL_RATIO, 3),
+      measuredM3: round(sumRows(section.rows, 'measuredM3'), 3),
+      gsv15M3: round(sumRows(section.rows, 'gsv15M3'), 3),
+      weightAirMT: round(sumRows(section.rows, 'weightAirMT'), 3),
+      // Workbook Data!X28 / Y28 — mean density of the tanks ticked "in use".
+      averageDensityInUse: inUse.length
+        ? round(inUse.reduce((a, r) => a + r.density15, 0) / inUse.length, 4)
+        : null,
+      // A tank that was sounded but has no density has a volume and no weight,
+      // so it drops out of the MT total silently. Counting those here lets the
+      // sheet say the total is short rather than look complete.
+      tanksWeighed: section.rows.filter((r) => r.weightAirMT != null).length,
+      soundedWithoutWeight: section.rows
+        .filter((r) => r.measuredM3 != null && r.weightAirMT == null)
+        .map((r) => r.name),
+      tanksInUse: section.rows.filter((r) => r.inUse).length,
+      movedIn: section.rows.filter((r) => r.moved).length,
+      pinned: section.rows.filter((r) => r.pinned).length,
+      mismatched: section.rows.filter((r) => r.sectionMismatch).length,
+    };
+  }
+
+  const allRows = sections.reduce((acc, s) => acc.concat(s.rows), []);
+  const grades = FUEL_TYPES.map((grade) => {
+    const rows = allRows.filter((r) => r.fuelType === grade.id);
+    const used = rows.some((r) => r.weightAirMT != null);
+    const actualMT = used ? round(sumRows(rows, 'weightAirMT'), 3) : null;
+    const logbookMT = num(normalized.logbook[grade.id]);
+    return {
+      id: grade.id,
+      label: grade.label,
+      section: grade.section,
+      tanks: rows.length,
+      actualMT,
+      logbookMT,
+      differenceMT: actualMT != null && logbookMT != null ? round(actualMT - logbookMT, 3) : null,
+      // Named so the log-book comparison can say it is being made against an
+      // incomplete figure — a missing density moves the difference by the whole
+      // weight of the tank it belongs to.
+      soundedWithoutWeight: rows
+        .filter((r) => r.measuredM3 != null && r.weightAirMT == null)
+        .map((r) => r.name),
+    };
+  });
+
+  const lubeRows = LUBE_FIELDS.map((f) => {
+    const litres = num(normalized.lube[f.id]);
+    return {
+      id: f.id,
+      label: f.label,
+      litres,
+      mt: litres != null ? round((litres * lubeDensity) / 1000, 3) : null,
+    };
+  });
+
+  return {
+    vessel: {
+      name: (bundle.vessel && bundle.vessel.name) || '',
+      imo: (bundle.vessel && bundle.vessel.imo) || '',
+      flag: (bundle.vessel && bundle.vessel.flag) || '',
+      type: (bundle.vessel && bundle.vessel.type) || '',
+    },
+    header: {
+      ...header,
+      draftFwd,
+      draftAft,
+      meanDraft: round(meanDraft, 3),
+      trim: round(trim, 3),
+      trimLabel: trimLabel(trim),
+      trimSense: trimSense(trim),
+      heel,
+      heelLabel: heelLabel(heel),
+      condition: String(header.reportType || '').toUpperCase(),
+      dateTime: [header.date, header.time].filter(Boolean).join(' '),
+    },
+    sections,
+    grades,
+    totals: {
+      capacity100M3: round(sumRows(allRows, 'capacity100M3'), 3),
+      capacity100MT: round(sumRows(allRows, 'capacity100MT'), 3),
+      measuredM3: round(sumRows(allRows, 'measuredM3'), 3),
+      gsv15M3: round(sumRows(allRows, 'gsv15M3'), 3),
+      weightAirMT: round(sumRows(allRows, 'weightAirMT'), 3),
+      tanksSounded: allRows.filter((r) => r.measuredM3 != null).length,
+      tanks: allRows.length,
+    },
+    lube: {
+      density: lubeDensity,
+      rows: lubeRows,
+      totalLitres: round(lubeRows.reduce((a, r) => a + (r.litres || 0), 0), 3),
+      totalMT: round(lubeRows.reduce((a, r) => a + (r.mt || 0), 0), 3),
+    },
+    received: RECEIVED_FIELDS.map((f) => ({ id: f.id, label: f.label, value: num(normalized.received[f.id]) })),
+    consumption: CONSUMPTION_FIELDS.map((f) => ({ id: f.id, label: f.label, value: num(normalized.consumption[f.id]) })),
+    consumptionBoiler: CONSUMPTION_FIELDS.map((f) => ({
+      id: f.id,
+      label: f.label,
+      value: num(normalized.consumption[{ atSea: 'boilerSea', atAnchor: 'boilerAnchor', atPort: 'boilerPort' }[f.id]]),
+    })),
+    signature: normalized.signature,
+    options: { capacityMtFactor, lubeDensity, safeFillRatio: SAFE_FILL_RATIO },
+    form: normalized,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Readings written back from the report rows, so the rest of the app (dashboard,
+ * bunkering, voyage calc) sees the same soundings the report was built from.
+ */
+function readingsFromReport(bundle, computed) {
+  const readings = { ...((bundle && bundle.readings) || {}) };
+  const savedAt = new Date().toISOString();
+  for (const section of computed.sections) {
+    for (const row of section.rows) {
+      if (row.measuredM3 == null) continue;
+      readings[row.tankId] = {
+        reading: num(row.reading),
+        trim: computed.header.trim,
+        list: computed.header.heel,
+        tempC: num(row.tempC, 15),
+        density15: row.density15,
+        gaugeType: 'meter',
+        entryMethod: row.method,
+        source: 'fuel-report',
+        result: {
+          soundingIncrement: row.trace.soundingIncrement,
+          heelIncrement: row.trace.heelIncrement,
+          trimCorrection: row.trace.trimCorrection,
+          listCorrection: row.trace.listCorrection,
+          correctedReading: row.trace.correctedReading,
+          soundingFromBottom: row.trace.soundingFromBottom,
+          volumeObserved: row.measuredM3,
+          fillPercent: row.volumePercent,
+          vcf: row.vcf,
+          correctedVolume15: row.gsv15M3,
+          wcf: row.wcf,
+          weightMT: row.weightAirMT,
+        },
+        savedAt,
+      };
+    }
+  }
+  return readings;
+}
+
+/**
+ * HFO/VLSFO and MO/MGO/LSMGO figures from a computed monitoring sheet.
+ *
+ * Home and the Tank Chief overview use these section totals — measured m³ and
+ * weight in air — so they show the same numbers as Tank Monitoring. Stored
+ * sounding results can disagree once the sheet's soundings or drafts change.
+ */
+function familyTotalsFromComputed(computed) {
+  const empty = () => ({ capacity: 0, volume: 0, weight: 0, withReading: 0, count: 0 });
+  const fam = { heavy: empty(), distillate: empty() };
+  const rows = [];
+  for (const section of (computed && computed.sections) || []) {
+    const distillate = section.id === 'do' || section.id === 'distillate';
+    const bucket = distillate ? fam.distillate : fam.heavy;
+    const list = section.rows || [];
+    const totals = section.totals || {};
+    bucket.count = totals.tanks != null ? totals.tanks : list.length;
+    bucket.capacity = num(totals.capacity100M3, 0) || 0;
+    bucket.volume = num(totals.measuredM3, 0) || 0;
+    bucket.weight = num(totals.weightAirMT, 0) || 0;
+    bucket.withReading = list.filter((r) => r && r.measuredM3 != null).length;
+    for (const row of list) rows.push({ row, distillate });
+  }
+  return { fam, rows };
+}
+
+/** Compact snapshot appended to the report history on "PRINT & SAVE". */
+function snapshotFromReport(computed) {
+  return {
+    id: `rep_${Date.now().toString(36)}`,
+    savedAt: computed.generatedAt,
+    reportType: computed.header.reportType,
+    description: String(computed.header.description || '').trim(),
+    voyageNo: computed.header.voyageNo,
+    port: computed.header.port,
+    date: computed.header.date,
+    time: computed.header.time,
+    totals: computed.totals,
+    grades: computed.grades.map((g) => ({
+      id: g.id,
+      label: g.label,
+      actualMT: g.actualMT,
+      logbookMT: g.logbookMT,
+      differenceMT: g.differenceMT,
+    })),
+    form: computed.form,
+  };
+}
+
+return {
+  REPORT_TYPES,
+  FUEL_TYPES,
+  UNIT_STANDARDS,
+  METHODS,
+  HEEL_OPTIONS,
+  SECTIONS,
+  LUBE_FIELDS,
+  RECEIVED_FIELDS,
+  CONSUMPTION_FIELDS,
+  CAPACITY_MT_FACTOR,
+  SAFE_FILL_RATIO,
+  LUBE_DENSITY,
+  normalizeMethod,
+  trimSense,
+  trimLabel,
+  soundingPipeHeight,
+  soundingPair,
+  fuelGradeFromName,
+  resolvedFuelGrade,
+  robGradeLabel,
+  robByGradeLabel,
+  isDistillateGrade,
+  defaultFuelType,
+  gradeForCarriedType,
+  applyCarriedFuelGrades,
+  sectionForTank,
+  sectionForFuelType,
+  sectionForRow,
+  densityFromUnit,
+  SOUNDING_MM_PER_CM,
+  soundingUnitOf,
+  mmToCm,
+  cmToMm,
+  formatCm,
+  formatActualInput,
+  usesDirectM3Input,
+  isDoubleInterpManualTank,
+  emptyFuelReport,
+  normalizeForm,
+  computeRow,
+  computeFuelReport,
+  familyTotalsFromComputed,
+  readingsFromReport,
+  snapshotFromReport,
+};
+}));

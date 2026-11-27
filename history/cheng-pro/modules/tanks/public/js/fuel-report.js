@@ -1,0 +1,2086 @@
+/**
+ * Fuel Oil Report page — the workbook "TANK CONDITION" sheet.
+ *
+ * On screen this is the entry grid from the workbook: one row per fuel tank
+ * with fuel type / sounding / method / temp / unit / tank-in-use, and the
+ * derived columns beside them.
+ *
+ * The derivation itself (how each sounding became a weight) and the reference
+ * tables are collapsed on screen but always rendered into the printed
+ * document — see buildPrintPages() below.
+ *
+ * All numbers come from FuelReportCore (public/js/fuel-report-core.js), the
+ * same module the server computes with.
+ */
+const FuelReport = (() => {
+  const Core = window.FuelReportCore;
+
+  /* ---------- local formatting helpers ---------- */
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (ch) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+    ));
+  }
+
+  function n(v, d = 2, blank = '') {
+    if (v === null || v === undefined || v === '' || Number.isNaN(Number(v))) return blank;
+    return Number(v).toFixed(d);
+  }
+
+  function pct(v) {
+    return v === null || v === undefined ? '' : `${Math.round(Number(v))}%`;
+  }
+
+  function signed(v, d = 3) {
+    if (v === null || v === undefined || v === '') return '';
+    const x = Number(v);
+    return (x > 0 ? '+' : '') + x.toFixed(d);
+  }
+
+  function nowStamp() {
+    return new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  }
+
+  /** Per-column display precision, shared by the screen grid and the printout. */
+  const CELL_FORMAT = {
+    capacity100M3: (v) => n(v, 1),
+    capacity100MT: (v) => n(v, 2),
+    measuredM3: (v) => n(v, 3),
+    volumePercent: pct,
+    density15: (v) => n(v, 4),
+    vcf: (v) => n(v, 4),
+    gsv15M3: (v) => n(v, 3),
+    wcf: (v) => n(v, 4),
+    weightAirMT: (v) => n(v, 3),
+  };
+
+  const COMPUTED_COLUMNS = [
+    { field: 'capacity100M3', label: 'VOLUME 100% M3' },
+    { field: 'capacity100MT', label: 'VOLUME 100% MT' },
+    { field: 'measuredM3', label: 'MEASURED VOL. (M3)' },
+    { field: 'volumePercent', label: 'VOLUME %' },
+    { field: 'density15', label: 'Density @15°C' },
+    { field: 'vcf', label: 'VCF TABLE 54-B' },
+    { field: 'gsv15M3', label: 'GSV @ 15°C (M3)' },
+    { field: 'wcf', label: 'WCF TABLE 56' },
+    { field: 'weightAirMT', label: 'WEIGHT BY AIR (MT)' },
+  ];
+
+  /* ---------- page state ---------- */
+
+  const view = {
+    form: null,
+    pendingForm: null,
+    computed: null,
+    conversion: null,
+    showCalcSheet: false,
+    dirty: false,
+  };
+
+  function currentBundle() {
+    return overlayAioIdentity(STATE.bundle);
+  }
+
+  /**
+   * Inside ChEng AIO, Vessel Setup owns the Chief Engineer name and signature.
+   * Tank folder ids often differ from the shell id, so the iframe's own
+   * vessel.json can be empty or stale even after the engineer saved the hub.
+   * Standalone Tank Chief keeps reading its own Vessel Setup — this returns
+   * null when there is no AIO parent.
+   */
+  function aioPrintIdentity() {
+    try {
+      const parentWin = window.parent;
+      if (!parentWin || parentWin === window) return null;
+      const vesselApi = parentWin.ChengPro && parentWin.ChengPro.vessel;
+      if (!vesselApi || typeof vesselApi.getActive !== 'function') return null;
+      const v = vesselApi.getActive();
+      if (!v) return null;
+      let assets = null;
+      if (typeof vesselApi.getAssets === 'function') assets = vesselApi.getAssets();
+      else if (v.assets) assets = v.assets;
+      const chiefEngineer = String(v.chiefEngineer || '').trim();
+      const sigs = (assets && assets.chEngSignatures && typeof assets.chEngSignatures === 'object')
+        ? assets.chEngSignatures : null;
+      const logo = assets && assets.vesselLogo ? assets.vesselLogo : null;
+      if (!chiefEngineer && !sigs && !logo) return null;
+      return { chiefEngineer, assets: { vesselLogo: logo, chEngSignatures: sigs || {} } };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function overlayAioIdentity(bundle) {
+    if (!bundle) return bundle;
+    const aio = aioPrintIdentity();
+    if (!aio) return bundle;
+    const vessel = Object.assign({}, bundle.vessel || {});
+    if (aio.chiefEngineer) vessel.chiefEngineer = aio.chiefEngineer;
+    const localAssets = bundle.assets && typeof bundle.assets === 'object'
+      ? bundle.assets : { vesselLogo: null, chEngSignatures: {} };
+    const aioSigs = (aio.assets && aio.assets.chEngSignatures) || {};
+    const chEngSignatures = Object.assign({}, localAssets.chEngSignatures || {});
+    for (const [key, url] of Object.entries(aioSigs)) {
+      if (typeof url !== 'string' || !url) continue;
+      const raw = String(key).trim();
+      chEngSignatures[raw] = url;
+      if (raw) chEngSignatures[raw.toLowerCase()] = url;
+    }
+    if (aio.chiefEngineer) {
+      const liveKey = String(aio.chiefEngineer).trim().toLowerCase();
+      if (liveKey && !chEngSignatures[liveKey]) {
+        const urls = Object.values(chEngSignatures).filter((u) => typeof u === 'string' && u);
+        if (urls.length) chEngSignatures[liveKey] = urls[0];
+      }
+    }
+    const assets = {
+      vesselLogo: (aio.assets && aio.assets.vesselLogo) || localAssets.vesselLogo || null,
+      chEngSignatures,
+    };
+    return Object.assign({}, bundle, { vessel, assets });
+  }
+
+  function applyAioIdentity() {
+    if (!window.STATE || !STATE.bundle) return STATE && STATE.bundle;
+    STATE.bundle = overlayAioIdentity(STATE.bundle);
+    const aio = aioPrintIdentity();
+    if (aio && aio.chiefEngineer && view.form && view.form.signature) {
+      view.form.signature.preparedBy = aio.chiefEngineer;
+    }
+    return STATE.bundle;
+  }
+
+  function recompute() {
+    applyAioIdentity();
+    view.computed = Core.computeFuelReport(currentBundle(), view.form, view.conversion);
+    return view.computed;
+  }
+
+  /** The block a tank's row is currently drawn in, per the last computation. */
+  function currentSectionOf(computed, tankId) {
+    for (const section of computed.sections) {
+      if (section.rows.some((r) => r.tankId === tankId)) return section.id;
+    }
+    return null;
+  }
+
+  /**
+   * A fuel type that belongs in the other block moves the row between tables,
+   * which the cell repaint cannot do — the page has to be rebuilt.
+   */
+  function sectionWouldChange(computed, formRow, tankId, nextFuelType) {
+    if (formRow.section) return false; // pinned rows stay put
+    return Core.sectionForFuelType(nextFuelType) !== currentSectionOf(computed, tankId);
+  }
+
+  async function loadConversion() {
+    if (view.conversion) return view.conversion;
+    if (STATE.conversionTable) {
+      view.conversion = STATE.conversionTable;
+      return view.conversion;
+    }
+    try {
+      view.conversion = await Api.request('/api/reference/conversion');
+      await OfflineDB.idbSet('conversion', view.conversion);
+    } catch {
+      view.conversion = (await OfflineDB.idbGet('conversion'))
+        || { apiToDensity15: [], rdToDensity15: [] };
+    }
+    STATE.conversionTable = view.conversion;
+    return view.conversion;
+  }
+
+  /* ---------- the four bunkering pages, one tap from each other ---------- */
+  const BUNKER_NAV = [
+    { page: 'bunker-plan', label: 'Plan', hint: 'Bunkering plan' },
+    { page: 'fuel-report', label: 'Monitoring', hint: 'Tank monitoring' },
+    { page: 'bunker-after', label: 'After bunkering', hint: 'Tank condition after bunkering' },
+    { page: 'bunker-summary', label: 'Summary', hint: 'Bunkering report summary' },
+  ];
+  function bunkerPlanReachable() {
+    try { return isBunkerOpsEmbed() || bunkerPlanNavAllowed() || aioBunkeringPlanLink(); } catch (_) { return false; }
+  }
+  function bunkerNavHtml(active) {
+    return '<nav class="bk-nav no-print" aria-label="Bunkering pages">'
+      + BUNKER_NAV.filter((i) => i.page !== 'bunker-plan' || bunkerPlanReachable()).map((i) =>
+        `<button type="button" class="btn${i.page === active ? ' primary' : ''}" data-bk-nav="${i.page}" title="${esc(i.hint)}"${i.page === active ? ' aria-current="page"' : ''}>${esc(i.label)}</button>`).join('')
+      + '</nav>';
+  }
+  /** Go to another bunkering page; whatever is being typed here is kept as the current draft first. */
+  async function bunkerGo(page) {
+    try {
+      await Promise.all([
+        window.BunkerReports && BunkerReports.flushDrafts ? BunkerReports.flushDrafts() : null,
+        flushDraft(),
+      ]);
+    } catch (_) { /* the draft copy is already on the device */ }
+    const ops = typeof isBunkerOpsEmbed === 'function' && isBunkerOpsEmbed();
+    if (page === 'bunker-plan') {
+      if (ops || (typeof bunkerPlanNavAllowed === 'function' && bunkerPlanNavAllowed())) { navigate('bunker-plan'); return; }
+      if (typeof openInAioShell === 'function' && openInAioShell('bunkeringplan')) return;
+      showToast('Open Bunkering Plan from the ChEng AIO menu');
+      return;
+    }
+    /* the plan's own frame inside ChEng AIO hands the other pages to the shell, which opens them in Tank Chief */
+    if (ops && window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'chengaio-navigate', module: 'tanks', page }, '*');
+      return;
+    }
+    navigate(page);
+  }
+  function bindBunkerNav(root) {
+    root.querySelectorAll('[data-bk-nav]').forEach((btn) => {
+      btn.onclick = () => { if (!btn.hasAttribute('aria-current')) bunkerGo(btn.dataset.bkNav); };
+    });
+  }
+
+  /* ---------- page ---------- */
+
+  async function render(main) {
+    const bundle = currentBundle();
+    let restoredDraft = false;
+    /* Edits that never reached the saved copy (the program closed, the page was left in a hurry) come back. */
+    if (!view.pendingForm) {
+      const m = readDraftMirror();
+      const saved = Date.parse(bundle.fuelReport && bundle.fuelReport.updatedAt) || 0;
+      if (m && m.ts > saved) { view.pendingForm = m.form; restoredDraft = true; showToast('Your unsaved Monitoring draft was restored'); }
+      else if (m) clearDraftMirror();
+    }
+    // A report loaded from the history panel survives the re-render that follows it.
+    view.form = Core.normalizeForm(bundle, view.pendingForm || bundle.fuelReport);
+    view.vesselId = STATE.activeVesselId;
+    view.pendingForm = null;
+    view.dirty = false;
+    await loadConversion();
+    recompute();
+
+    main.innerHTML += `${bunkerNavHtml('fuel-report')}<div class="page-head no-print">
+      <div>
+        <h1>Fuel Oil Report</h1>
+        <div class="desc">Tank condition sheet — soundings, VCF/WCF and weight in air per fuel tank</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" id="fr-print-save">PRINT &amp; SAVE</button>
+        <button class="btn" id="fr-save">Save only</button>
+        <button class="btn" id="fr-print-only">Print only</button>
+        ${(typeof isAioEmbedded === 'function' && isAioEmbedded()) ? '' : '<button class="btn" id="fr-main-menu">MAIN MENU</button>'}
+      </div>
+    </div>`;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'fuel-report-page';
+    wrap.innerHTML = `
+      ${renderHeaderPanel()}
+      ${view.computed.sections.map((s) => renderSectionPanel(s)).join('')}
+      ${renderGradesPanel()}
+      ${renderQuantitiesPanel()}
+      ${renderCalcSheetPanel()}
+      ${renderHistoryPanel(bundle.reportHistory || [])}
+      <div class="fr-preview-label no-print">Print preview — this is the document PRINT &amp; SAVE sends to the printer</div>
+      <div id="fr-live-preview" class="fuel-report-print-doc fr-preview"></div>`;
+    main.appendChild(wrap);
+
+    bindEvents(wrap);
+    bindBunkerNav(main);
+    refreshComputed();
+    if (restoredDraft) scheduleDraft();
+    if (window.TankCardCapture) TankCardCapture.addButton('.page-head .btn-row', 'fr-capture', 'report', () => currentBundle());
+  }
+
+  function renderHeaderPanel() {
+    const h = view.form.header;
+    const types = Core.REPORT_TYPES.map((t) =>
+      `<option value="${esc(t)}" ${h.reportType === t ? 'selected' : ''}>${esc(t)}</option>`).join('');
+    const heelVal = h.heel === '' || h.heel == null ? 0 : h.heel;
+
+    return `<div class="form-panel fr-header no-print">
+      <div class="fr-header-grid">
+        <label class="fr-field"><span>VOYAGE</span>
+          <input data-head="voyageNo" value="${esc(h.voyageNo)}"></label>
+        <label class="fr-field"><span>REPORT</span>
+          <select data-head="reportType">${types}</select></label>
+        <label class="fr-field"><span>DRAFT FWD</span>
+          <input type="number" step="any" data-head="draftFwd" value="${esc(h.draftFwd)}"></label>
+        <label class="fr-field"><span>MEAN DRAFT</span>
+          <output class="fr-out" data-fr-head="meanDraft"></output></label>
+        <div class="fr-field-triple">
+          <label class="fr-field"><span>HEEL (°)</span>
+            <input type="number" step="any" data-head="heel" data-signed="1" value="${esc(heelVal)}" title="Negative = port · positive = starboard"></label>
+          <label class="fr-field"><span>SW TEMP.</span>
+            <input type="number" step="any" data-head="seaTemp" value="${esc(h.seaTemp)}"></label>
+          <label class="fr-field"><span>ER TEMP.</span>
+            <input type="number" step="any" data-head="engineRoomTemp" value="${esc(h.engineRoomTemp)}"></label>
+        </div>
+
+        <label class="fr-field"><span>DATE</span>
+          <input type="date" data-head="date" value="${esc(h.date)}"></label>
+        <label class="fr-field"><span>TIME</span>
+          <input type="time" data-head="time" value="${esc(h.time)}"></label>
+        <label class="fr-field"><span>DRAFT AFT</span>
+          <input type="number" step="any" data-head="draftAft" value="${esc(h.draftAft)}"></label>
+        <label class="fr-field"><span>TRIM</span>
+          <output class="fr-out" data-fr-head="trim"></output></label>
+        <label class="fr-field fr-field-wide"><span>PORT</span>
+          <input data-head="port" value="${esc(h.port)}"></label>
+        <label class="fr-field fr-field-wide"><span>DESCRIPTION (shown in Saved reports)</span>
+          <input data-head="description" maxlength="120" placeholder="e.g. Departure Fujairah, after bunkering" value="${esc(h.description || '')}"></label>
+      </div>
+      <div class="hint">Heel: enter decimals if needed. <b>Negative</b> values = heel to <b>port</b>; <b>positive</b> = heel to <b>starboard</b>. Default 0 when left blank.</div>
+      <div class="hint" data-fr-head="attitude"></div>
+    </div>`;
+  }
+
+  function tankById(tankId) {
+    const b = currentBundle();
+    for (const list of Object.values(b.tanks || {})) {
+      const t = (list || []).find((x) => x.id === tankId);
+      if (t) return t;
+    }
+    return null;
+  }
+
+  /**
+   * The tank-entry grid for one section. `formRows` lets other pages (the
+   * after-bunkering report) render the same sheet against their own form.
+   */
+  function renderSectionPanel(section, formRows) {
+    const fuelTypes = Core.FUEL_TYPES;
+    const units = Core.UNIT_STANDARDS;
+    const source = formRows || view.form.rows;
+    const rows = section.rows.map((row) => {
+      const f = source[row.tankId] || {};
+      const typeOpts = fuelTypes.map((t) =>
+        `<option value="${t.id}" ${row.fuelType === t.id ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
+      const unitOpts = units.map((u) =>
+        `<option value="${u.id}" ${row.unit === u.id ? 'selected' : ''}>${esc(u.label)}</option>`).join('');
+      const methodOpts = Core.METHODS.map((m) =>
+        `<option value="${m.id}" ${row.method === m.id ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
+      const tank = tankById(row.tankId);
+      const actualVal = tank
+        ? Core.formatActualInput(f.reading !== undefined && f.reading !== '' ? f.reading : row.reading, tank)
+        : Core.formatCm(row.reading, { soundingUnit: row.soundingUnit });
+      const methodCell = row.directM3Input
+        ? `<span class="hint">${row.doubleInterpManual ? 'Double interp.' : 'Gauge m³'}</span>`
+        : `<select data-row="${esc(row.tankId)}" data-field="method">${methodOpts}</select>`;
+      const diBtn = row.doubleInterpManual
+        ? `<button type="button" class="btn ghost small fr-di-btn" data-double-interp="${esc(row.tankId)}" title="Manual double interpolation">Double interp…</button>`
+        : '';
+      return `<tr data-tank="${esc(row.tankId)}">
+        <th class="fr-tank-name">${esc(row.name)}<span class="fr-move" data-fr-move="${esc(row.tankId)}"></span></th>
+        <td><select data-row="${esc(row.tankId)}" data-field="fuelType">${typeOpts}</select></td>
+        <td class="fr-actual-cell"><input type="number" step="any" data-row="${esc(row.tankId)}" data-field="reading" data-sheet-popup="actual" value="${esc(actualVal)}">${diBtn}</td>
+        <td>${methodCell}</td>
+        <td><input type="number" step="any" class="fr-narrow" data-row="${esc(row.tankId)}" data-field="tempC" data-sheet-popup="temp" value="${esc(f.tempC)}"></td>
+        <td><input type="number" step="any" class="fr-wide" data-row="${esc(row.tankId)}" data-field="unitValue" data-sheet-popup="sg" value="${esc(f.unitValue)}"></td>
+        <td class="fr-check"><input type="checkbox" data-row="${esc(row.tankId)}" data-field="inUse" ${row.inUse ? 'checked' : ''}></td>
+        ${COMPUTED_COLUMNS.map((c) =>
+          `<td class="fr-calc" data-fr-cell="${esc(row.tankId)}.${c.field}"></td>`).join('')}
+      </tr>`;
+    }).join('');
+
+    return `<div class="form-panel fr-section no-print" data-section="${esc(section.id)}">
+      <div class="section-title" style="margin-top:0">${esc(section.title)}</div>
+      <div class="scroll-x">
+        <table class="fr-sheet">
+          <thead>
+            <tr>
+              <th>TANK</th><th>FUEL TYPE</th><th>ACTUAL (CM / M³)</th><th>METHOD</th><th>TEMP. (°C)</th>
+              <th>SG</th><th>TANK IN USE</th>
+              ${COMPUTED_COLUMNS.map((c) => `<th class="fr-calc-head">${esc(c.label)}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr>
+              <th colspan="7">TOTAL — ${section.rows.length} tanks</th>
+              <td class="fr-calc" data-fr-total="${esc(section.id)}.capacity100M3"></td>
+              <td class="fr-calc" data-fr-total="${esc(section.id)}.capacity100MT"></td>
+              <td class="fr-calc" data-fr-total="${esc(section.id)}.measuredM3"></td>
+              <td></td><td></td><td></td>
+              <td class="fr-calc" data-fr-total="${esc(section.id)}.gsv15M3"></td>
+              <td></td>
+              <td class="fr-calc" data-fr-total="${esc(section.id)}.weightAirMT"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="hint" data-fr-section-note="${esc(section.id)}"></div>
+      <div class="hint">Gauge / double-interpolation tanks: enter <b>actual volume in m³</b> — measured vol. matches actual (no calibration table).</div>
+    </div>`;
+  }
+
+  /**
+   * AIO-only: Voyage Chief Calculated ROB is available on the parent shell.
+   */
+  function showVoyageRobButton() {
+    try {
+      return typeof isAioEmbedded === 'function' && isAioEmbedded();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** Map Voyage fuel grade labels onto Fuel Oil Report logbook keys. */
+  function logbookIdForVoyageGrade(grade) {
+    const g = String(grade || '').trim().toUpperCase();
+    if (g === 'HFO' || (g.includes('HFO') && !g.includes('LS'))) return 'hfo';
+    if (g === 'LSFO' || g.includes('VLSFO') || g.includes('LSFO')) return 'lsfo';
+    if (g === 'LSMGO' || g.includes('LSMGO')) return 'lsmgo';
+    if (g === 'MDO/MGO' || g.includes('MDO') || g.includes('MGO') || g === 'MO/MGO') return 'mdo';
+    return null;
+  }
+
+  /**
+   * Map Voyage lube tank kind/name onto Fuel Oil Report lube quantity keys.
+   */
+  function lubeIdForVoyageTank(tank) {
+    const kind = String((tank && tank.kind) || '').trim();
+    if (kind === 'cylHigh') return 'cylHigh';
+    if (kind === 'cylLow') return 'cylLow';
+    if (kind === 'meSys') return 'meSystem';
+    if (kind === 'geSys') return 'dgSystem';
+    const name = String((tank && (tank.name || tank.id)) || '').trim().toUpperCase();
+    if (name.includes('CYL') && name.includes('HIGH')) return 'cylHigh';
+    if (name.includes('CYL') && name.includes('LOW')) return 'cylLow';
+    if (name.includes('ME SYS') || name.includes('M/E SYS') || name === 'MESYSOIL') return 'meSystem';
+    if (name.includes('GE SYS') || name.includes('G/E SYS') || name.includes('D/G')
+      || name === 'GESYSOIL') return 'dgSystem';
+    return null;
+  }
+
+  /**
+   * Read Voyage Chief present ROB (Calculated ROB book) from the AIO shell.
+   * Returns { fuels: {hfo,lsfo,mdo,lsmgo}, lubes: {cylHigh,...} } or null.
+   */
+  async function readVoyageRobSnapshot() {
+    try {
+      const parentWin = window.parent;
+      if (!parentWin || parentWin === window) return null;
+      const bridge = parentWin.ChengProVoyageBridge;
+      if (!bridge || typeof bridge.readHomeSnapshot !== 'function') return null;
+      let vessel = null;
+      try {
+        vessel = parentWin.ChengPro && parentWin.ChengPro.vessel
+          && typeof parentWin.ChengPro.vessel.getActive === 'function'
+          ? parentWin.ChengPro.vessel.getActive()
+          : null;
+      } catch (_) { /* cross-origin or missing */ }
+      const snap = await bridge.readHomeSnapshot(vessel);
+      if (!snap || !snap.ok) return null;
+
+      const fuels = { hfo: null, lsfo: null, mdo: null, lsmgo: null };
+      const rob = snap.robCurrent || {};
+      const tanks = Array.isArray(snap.fuelTanks) ? snap.fuelTanks : [];
+      for (const t of tanks) {
+        const key = logbookIdForVoyageGrade(t.grade || t.name);
+        if (!key) continue;
+        const v = Number(rob[t.id]);
+        if (!Number.isFinite(v)) continue;
+        fuels[key] = (fuels[key] == null ? 0 : fuels[key]) + v;
+      }
+
+      const lubes = { cylHigh: null, cylLow: null, meSystem: null, dgSystem: null };
+      const robLube = snap.robLubeCurrent || {};
+      const lubeTanks = Array.isArray(snap.lubeTanks) ? snap.lubeTanks : [];
+      for (const t of lubeTanks) {
+        const key = lubeIdForVoyageTank(t);
+        if (!key) continue;
+        const v = Number(robLube[t.id]);
+        if (!Number.isFinite(v)) continue;
+        lubes[key] = (lubes[key] == null ? 0 : lubes[key]) + v;
+      }
+
+      return { fuels, lubes };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * AIO only — fill LOGBOOK ROB (MT) and lube oil quantity (litres) from
+   * Voyage Chief Calculated ROB.
+   */
+  async function fillLogbookFromVoyageRob() {
+    const snap = await readVoyageRobSnapshot();
+    if (!snap) {
+      showToast('Voyage ROB unavailable — open Voyage Chief for this vessel first');
+      return;
+    }
+    let fuelFilled = 0;
+    let lubeFilled = 0;
+    for (const grade of Core.FUEL_TYPES) {
+      const mt = snap.fuels[grade.id];
+      if (mt == null || !Number.isFinite(Number(mt))) continue;
+      const val = n(mt, 3);
+      view.form.logbook[grade.id] = val;
+      const input = document.querySelector(`[data-logbook="${grade.id}"]`);
+      if (input) input.value = val;
+      fuelFilled += 1;
+    }
+    for (const field of Core.LUBE_FIELDS) {
+      const litres = snap.lubes[field.id];
+      if (litres == null || !Number.isFinite(Number(litres))) continue;
+      const val = n(litres, 0);
+      view.form.lube[field.id] = val;
+      const input = document.querySelector(`[data-lube="${field.id}"]`);
+      if (input) input.value = val;
+      lubeFilled += 1;
+    }
+    view.dirty = true; scheduleDraft();
+    refreshComputed();
+    if (!fuelFilled && !lubeFilled) {
+      showToast('No Voyage ROB figures for this vessel');
+      return;
+    }
+    const parts = [];
+    if (fuelFilled) parts.push(`${fuelFilled} fuel`);
+    if (lubeFilled) parts.push(`${lubeFilled} lube`);
+    showToast(`Filled from Voyage ROB (${parts.join(', ')})`);
+  }
+
+  function renderGradesPanel() {
+    const cells = Core.FUEL_TYPES.map((g) => `
+      <div class="fr-grade" data-grade="${g.id}">
+        <div class="fr-grade-label">${esc(g.label)}</div>
+        <label class="fr-field"><span>LOGBOOK ROB (MT)</span>
+          <input type="number" step="any" data-logbook="${g.id}" value="${esc(view.form.logbook[g.id])}"></label>
+        <div class="fr-grade-row"><span>TOTAL ACTUAL (MT)</span>
+          <b data-fr-grade="${g.id}.actualMT"></b></div>
+        <div class="fr-grade-row"><span>LOGBOOK − ACTUAL</span>
+          <b data-fr-grade="${g.id}.differenceMT"></b></div>
+      </div>`).join('');
+    const robBtn = showVoyageRobButton()
+      ? `<button type="button" class="btn small" id="fr-fill-logbook-rob">Get current ROB</button>`
+      : '';
+    return `<div class="form-panel no-print">
+      <div class="section-title" style="margin-top:0">
+        <span>Totals vs log book</span>
+        ${robBtn}
+      </div>
+      <div class="fr-grades">${cells}</div>
+    </div>`;
+  }
+
+  function renderQuantitiesPanel() {
+    const lube = Core.LUBE_FIELDS.map((f) => `
+      <label class="fr-field"><span>${esc(f.label)}</span>
+        <input type="number" step="any" data-lube="${f.id}" value="${esc(view.form.lube[f.id])}">
+        <em class="fr-unit" data-fr-lube="${f.id}"></em></label>`).join('');
+    const received = Core.RECEIVED_FIELDS.map((f) => `
+      <label class="fr-field"><span>${esc(f.label)}</span>
+        <input type="number" step="any" data-received="${f.id}" value="${esc(view.form.received[f.id])}"></label>`).join('');
+    const consumption = Core.CONSUMPTION_FIELDS.map((f) => `
+      <label class="fr-field"><span>${esc(f.label)}</span>
+        <input type="number" step="any" data-consumption="${f.id}" value="${esc(view.form.consumption[f.id])}"></label>`).join('');
+    /* No Prepared-by boxes. The Chief Engineer's name, rank and signature are
+       the ship's, entered once on Vessel Setup, and every printout in the suite
+       reads them from the vessel record -- so there is nothing to retype here,
+       and nothing to go stale after a crew change. What the sheet will carry is
+       shown instead, so it can still be checked before printing. */
+    const sig = view.form.signature;
+    const signer = String(sig.preparedBy || '').trim();
+    const vesselSigner = String(vesselChiefEngineer() || '').trim();
+    const signedNote = signer
+      ? (signer === vesselSigner
+        ? `Signed by <b>${esc(signer)}</b>, ${esc(sig.rank || 'Chief Engineer')}, from Vessel Setup.`
+        : `This sheet is filed under <b>${esc(signer)}</b>, ${esc(sig.rank || 'Chief Engineer')} — the officer who prepared it. `
+          + (vesselSigner
+            ? `Vessel Setup now names ${esc(vesselSigner)}; new sheets will carry that name.`
+            : 'Vessel Setup names no Chief Engineer yet.'))
+      : 'No Chief Engineer is named on Vessel Setup yet, so the signature line will print blank. '
+        + 'Enter the name there and upload the signature once, and every printout will carry both.';
+    return `<div class="form-panel no-print">
+      <div class="section-title" style="margin-top:0">Lube oil quantity (litres)</div>
+      <div class="fr-quant">${lube}</div>
+      <div class="section-title">Received quantity (MT)</div>
+      <div class="fr-quant">${received}</div>
+      <div class="section-title">Daily fuel consumption (MT)</div>
+      <div class="fr-quant">${consumption}</div>
+      <div class="section-title">Prepared by</div>
+      <p class="hint" data-fr-signer style="margin:0">${signedNote}</p>
+    </div>`;
+  }
+
+  function renderCalcSheetPanel() {
+    return `<div class="form-panel no-print">
+      <div class="section-title" style="margin-top:0">Calculation sheet &amp; reference tables</div>
+      <p class="hint">The white pages below are the printout. Send them to the printer with
+        PRINT &amp; SAVE, or with Print only to print without filing a saved report.</p>
+      <div class="btn-row">
+        <button class="btn small" id="fr-toggle-calc">Show on screen</button>
+      </div>
+      <div id="fr-calc-sheet" class="fr-calc-sheet" hidden></div>
+    </div>`;
+  }
+
+  /**
+   * Compare a saved record against the same record recomputed now.
+   *
+   * Reprinting a saved report recomputes it from the vessel's current tanks and
+   * calibration, because that is the only thing the form can be turned into
+   * numbers with. If a tank has been re-measured since, the reprint is no
+   * longer the sheet that was signed — so say so rather than hand over a
+   * different document under the same date.
+   *
+   * The comparison walks whatever the snapshot function chose to keep, so it
+   * stays honest without a separate list of "fields that matter".
+   */
+  function snapshotDrift(saved, fresh, tolerance = 0.001) {
+    const changed = [];
+    const walk = (a, b, path) => {
+      if (changed.length > 6) return;
+      if (typeof a === 'number' && typeof b === 'number') {
+        if (Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) > tolerance) changed.push(path);
+        return;
+      }
+      if (Array.isArray(a) && Array.isArray(b)) {
+        for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+          walk(a[i], b[i], `${path}[${i}]`);
+        }
+        return;
+      }
+      if (a && b && typeof a === 'object' && typeof b === 'object') {
+        for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+          if (k === 'id' || k === 'savedAt' || k === 'form') continue;
+          walk(a[k], b[k], path ? `${path}.${k}` : k);
+        }
+      }
+    };
+    walk(saved, fresh, '');
+    return changed;
+  }
+
+  /** Warn once, in plain terms, when a reprint no longer matches what was saved. */
+  function warnIfDrifted(changed) {
+    if (!changed.length) return;
+    showToast(`Printed from today's tank data — ${changed.length} figure${changed.length === 1 ? '' : 's'} differ${changed.length === 1 ? 's' : ''} from the saved report`);
+  }
+
+  /** Filed reports, newest first by the moment they were saved. */
+  function filedReports(history) {
+    return (history || [])
+      .filter((s) => s && s.id !== '__draft__' && !s.isDraft)
+      .map((s, i) => ({ s, i }))
+      .sort((a, b) => {
+        const x = String(a.s.savedAt || '');
+        const y = String(b.s.savedAt || '');
+        return x < y ? 1 : x > y ? -1 : a.i - b.i;
+      })
+      .map((e) => e.s);
+  }
+
+  /**
+   * Is the form on screen a draft: changed since the last report was filed?
+   * A report just filed is not a draft. The stored draft is stamped when Save was pressed, and the
+   * report a moment after, so a draft no newer than the newest report is that report. The form is
+   * also compared with the report as the calculation sees it (normalised the same way), because
+   * comparing it raw said "different" forever and left a Draft row beside every report just saved.
+   */
+  function isDraft(form, newest) {
+    if (!form || !form.updatedAt) return false;
+    if (view.dirty) return true;
+    if (!newest) return true;
+    if (String(form.updatedAt) <= String(newest.savedAt || '')) return false;
+    let normal = form;
+    try { normal = Core.normalizeForm(currentBundle(), form); } catch (_) { normal = form; }
+    return !(newest.form && (sameSavedForm(newest.form, form) || sameSavedForm(newest.form, normal)));
+  }
+
+  /** "2026-11-14 12:00" from a report's own date and time as typed in the form. */
+  function reportDate(date, time) {
+    return [String(date || '').trim(), String(time || '').trim()].filter(Boolean).join(' ');
+  }
+
+  function renderHistoryPanel(history) {
+    const draftForm = view.form && view.form.updatedAt ? view.form : null;
+    const filed = filedReports(history);
+    const showDraft = isDraft(draftForm, filed[0]);
+    const draft = showDraft ? [{
+      id: '__draft__',
+      isDraft: true,
+      savedAt: draftForm.updatedAt,
+      reportType: (draftForm.header && draftForm.header.reportType) || '',
+      voyageNo: (draftForm.header && draftForm.header.voyageNo) || '',
+      port: (draftForm.header && draftForm.header.port) || '',
+      description: (draftForm.header && draftForm.header.description) || '',
+      date: (draftForm.header && draftForm.header.date) || '',
+      time: (draftForm.header && draftForm.header.time) || '',
+      totals: null,
+      form: draftForm,
+    }] : [];
+    const merged = [...draft, ...filed];
+    const rows = merged.map((s) => `<tr>
+      <td>${esc(reportDate(s.date || (s.form && s.form.header && s.form.header.date), s.time || (s.form && s.form.header && s.form.header.time)) || '—')}</td>
+      <td>${s.isDraft ? '<span class="chip on">Draft</span> ' : ''}${esc((s.savedAt || '').replace('T', ' ').slice(0, 16))}</td>
+      <td>${esc(s.description || (s.form && s.form.header && s.form.header.description) || '')}</td>
+      <td>${esc(s.reportType || '')}</td>
+      <td>${esc(s.voyageNo || '')}</td>
+      <td>${esc(s.port || '')}</td>
+      <td>${s.isDraft ? 'Current draft — Load to edit' : n(s.totals && s.totals.weightAirMT, 3)}</td>
+      <td class="btn-row"><button class="btn small" data-print-snapshot="${esc(s.id)}">Print</button>
+        <button class="btn small" data-load-snapshot="${esc(s.id)}">Load</button>
+        ${s.isDraft ? '' : `<button class="btn small danger" data-del-snapshot="${esc(s.id)}">Delete</button>`}</td>
+    </tr>`).join('');
+    return `<div class="form-panel no-print" id="fr-history-panel">
+      <details class="saved-reports-fold">
+        <summary class="section-title" style="margin-top:0; cursor:pointer;">Saved reports</summary>
+        <p class="hint" style="margin-top:8px;">Drafts stay editable. Filed reports can be reprinted or loaded.</p>
+        <div class="scroll-x"><table class="data-table">
+          <thead><tr><th>Report date</th><th>Saved</th><th>Description</th><th>Type</th><th>Voyage</th><th>Port</th><th>Total MT</th><th></th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="8" class="empty-state">Nothing saved yet — use Save only to file this report, or Print &amp; Save to file it and print</td></tr>'}</tbody>
+        </table></div>
+      </details>
+    </div>`;
+  }
+
+  /* ---------- live recalculation ---------- */
+
+  function setCell(selector, value, title) {
+    document.querySelectorAll(selector).forEach((el) => {
+      el.textContent = value;
+      if (title) el.title = title;
+      else el.removeAttribute('title');
+    });
+  }
+
+  const SECTION_SHORT = { fuel: 'HFO/VLSFO', do: 'MO/MGO/LSMGO' };
+
+  /**
+   * A row sits in the block its fuel type belongs to, so nothing has to be
+   * clicked for the totals to be right. The control here is the exception: pin
+   * a row back to its home table, or release a pinned row to follow the fuel
+   * type again.
+   */
+  function moveControlHtml(row) {
+    if (row.pinned) {
+      return `<button class="btn small fr-move-btn fr-move-undo" data-move="${esc(row.tankId)}" data-move-to=""
+        title="Held in the ${esc(SECTION_SHORT[row.section])} table against its ${esc(row.fuelTypeLabel)} fuel type — release it"
+        >pinned ↩</button>`;
+    }
+    if (row.moved) {
+      const home = row.homeSection;
+      return `<button class="btn small fr-move-btn" data-move="${esc(row.tankId)}" data-move-to="${esc(home)}"
+        title="Counted here because it is carrying ${esc(row.fuelTypeLabel)}. Keep it in the ${esc(SECTION_SHORT[home])} table instead?"
+        >${esc(row.fuelTypeLabel)} ↩ ${esc(SECTION_SHORT[home] || home)}</button>`;
+    }
+    return '';
+  }
+
+  /** Write the derived columns and section totals of a computed report into the DOM. */
+  function paintSectionCells(sections) {
+    for (const section of sections) {
+      for (const row of section.rows) {
+        const moveSlot = document.querySelector(`[data-fr-move="${row.tankId}"]`);
+        if (moveSlot) moveSlot.innerHTML = moveControlHtml(row);
+        for (const col of COMPUTED_COLUMNS) {
+          const text = CELL_FORMAT[col.field](row[col.field]);
+          setCell(`[data-fr-cell="${row.tankId}.${col.field}"]`, text,
+            row.warnings.length ? row.warnings.join(' · ') : '');
+        }
+        const tr = document.querySelector(`tr[data-tank="${row.tankId}"]`);
+        if (tr) tr.classList.toggle('fr-warn', row.warnings.length > 0 && row.reading !== '');
+      }
+      for (const field of ['capacity100M3', 'capacity100MT', 'measuredM3', 'gsv15M3', 'weightAirMT']) {
+        setCell(`[data-fr-total="${section.id}.${field}"]`, CELL_FORMAT[field](section.totals[field]));
+      }
+    }
+  }
+
+  function refreshComputed() {
+    const c = recompute();
+
+    setCell('[data-fr-head="meanDraft"]', n(c.header.meanDraft, 2));
+    setCell('[data-fr-head="trim"]', n(c.header.trim, 2));
+    setCell('[data-fr-head="attitude"]',
+      `Trim ${c.header.trimLabel} · heel ${c.header.heelLabel} — calibration tables are read at trim `
+      + `${signed(c.header.trim, 2)} m ${Core.trimSense(c.header.trim)}.`);
+
+    paintSectionCells(c.sections);
+    for (const section of c.sections) {
+      setCell(`[data-fr-section-note="${section.id}"]`,
+        `100% capacity ${n(section.totals.capacity100MT, 2)} MT · 85% filling limit `
+        + `${n(section.totals.capacity85MT, 2)} MT · ${section.totals.tanksInUse} tank(s) in use`
+        + (section.totals.averageDensityInUse != null
+          ? ` · mean density in use ${n(section.totals.averageDensityInUse, 4)}` : '')
+        + (section.totals.movedIn
+          ? ` · ${section.totals.movedIn} tank(s) counted here by fuel type` : '')
+        + (section.totals.pinned
+          ? ` · ${section.totals.pinned} pinned here` : ''));
+    }
+
+    const preview = document.getElementById('fr-live-preview');
+    if (preview) preview.innerHTML = buildPrintPages(c);
+
+    for (const grade of c.grades) {
+      setCell(`[data-fr-grade="${grade.id}.actualMT"]`, n(grade.actualMT, 3, '—'));
+      setCell(`[data-fr-grade="${grade.id}.differenceMT"]`, signed(grade.differenceMT, 3) || '—');
+      const box = document.querySelector(`.fr-grade[data-grade="${grade.id}"]`);
+      if (box) {
+        box.classList.toggle('fr-grade-empty', !grade.tanks);
+        box.classList.toggle('fr-grade-off', grade.differenceMT != null && Math.abs(grade.differenceMT) > 0.5);
+      }
+    }
+
+    for (const row of c.lube.rows) {
+      setCell(`[data-fr-lube="${row.id}"]`, row.mt != null ? `${n(row.mt, 3)} MT` : '');
+    }
+
+    if (view.showCalcSheet) {
+      const host = document.getElementById('fr-calc-sheet');
+      if (host) host.innerHTML = buildCalcSheetHtml(c);
+    }
+  }
+
+  /* ---------- events ---------- */
+
+  /**
+   * Wire the move buttons for a sheet. The row physically changes table, so the
+   * page has to be re-rendered rather than repainted — `onMoved` is where the
+   * page carries its unsaved form across that re-render and navigates.
+   */
+  function bindSectionMove(wrap, formRows, onMoved) {
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-move]');
+      if (!btn) return;
+      const row = formRows[btn.dataset.move];
+      if (!row) return;
+      const to = btn.dataset.moveTo || '';
+      row.section = to;
+      onMoved(to);
+      showToast(to
+        ? `Pinned to the ${SECTION_SHORT[to]} table`
+        : 'Following the fuel type again');
+    });
+  }
+
+  function bindEvents(wrap) {
+    bindSheetPopups(wrap, () => view.form.rows, () => view.computed || recompute(), () => {
+      view.dirty = true; scheduleDraft(); refreshComputed();
+    });
+    bindSectionMove(wrap, view.form.rows, () => {
+      view.pendingForm = view.form;
+      view.dirty = true;
+      navigate('fuel-report');
+    });
+    const mark = () => { view.dirty = true; };
+    /* any edit made on the sheet is kept as the current draft */
+    const edited = (e) => {
+      const t = e.target;
+      if (!t || !t.matches || !t.matches('input, select, textarea') || t.closest('[data-hist-search], .fr-history')) return;
+      view.dirty = true;
+      /* after the sheet's own handlers have taken this edit into the form */
+      setTimeout(scheduleDraft, 0);
+    };
+    wrap.addEventListener('input', edited);
+    wrap.addEventListener('change', edited);
+
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-double-interp]');
+      if (!btn || !window.TankDoubleInterpManual) return;
+      const tankId = btn.dataset.doubleInterp;
+      const tank = tankById(tankId);
+      const row = view.form.rows[tankId];
+      if (!tank || !row) return;
+      const h = view.form.header || {};
+      const draftFwd = Number(h.draftFwd);
+      const draftAft = Number(h.draftAft);
+      const trimByStern = Number.isFinite(draftFwd) && Number.isFinite(draftAft)
+        ? (draftAft - draftFwd) : (Number(h.trim) || 0);
+      const heel = h.heel === '' || h.heel == null ? 0 : Number(h.heel);
+      window.TankDoubleInterpManual.open({
+        tankId,
+        tankName: tank.name,
+        initialVolumeM3: row.reading !== '' && row.reading != null ? Number(row.reading) : null,
+        trimByStern,
+        heelDeg: Number.isFinite(heel) ? heel : 0,
+        onApply: (m3) => {
+          row.reading = m3;
+          const inp = wrap.querySelector(`input[data-row="${CSS.escape(tankId)}"][data-field="reading"]`);
+          if (inp) inp.value = String(m3);
+          view.dirty = true;
+          refreshComputed();
+        },
+      });
+    });
+
+    wrap.addEventListener('input', (e) => {
+      const el = e.target;
+      if (el.dataset.row && el.dataset.field) {
+        const row = view.form.rows[el.dataset.row];
+        if (!row) return;
+        const moves = el.dataset.field === 'fuelType'
+          && sectionWouldChange(view.computed, row, el.dataset.row, el.value);
+        if (el.dataset.field === 'reading') {
+          const computedRow = (view.computed?.sections || [])
+            .flatMap((s) => s.rows).find((r) => r.tankId === el.dataset.row);
+          if (computedRow?.directM3Input) {
+            row.reading = el.value === '' ? '' : Number(el.value);
+          } else {
+            const hint = { soundingUnit: computedRow?.soundingUnit || 'mm' };
+            row.reading = Core.cmToMm(el.value, hint);
+          }
+          row.unit = 'den15';
+        } else if (el.dataset.field === 'unitValue') {
+          row.unitValue = el.value;
+          row.unit = 'den15';
+        } else {
+          row[el.dataset.field] = el.type === 'checkbox' ? el.checked : el.value;
+        }
+        if (moves) {
+          view.pendingForm = view.form;
+          view.dirty = true;
+          navigate('fuel-report');
+          showToast(`Moved to the ${SECTION_SHORT[Core.sectionForFuelType(el.value)]} table`);
+          return;
+        }
+      } else if (el.dataset.head) {
+        view.form.header[el.dataset.head] = el.value;
+      } else if (el.dataset.logbook) {
+        view.form.logbook[el.dataset.logbook] = el.value;
+      } else if (el.dataset.lube) {
+        view.form.lube[el.dataset.lube] = el.value;
+      } else if (el.dataset.received) {
+        view.form.received[el.dataset.received] = el.value;
+      } else if (el.dataset.consumption) {
+        view.form.consumption[el.dataset.consumption] = el.value;
+      } else {
+        return;
+      }
+      mark();
+      refreshComputed();
+    });
+
+    document.getElementById('fr-print-save').onclick = () => saveReport({ snapshot: true, print: true });
+    document.getElementById('fr-save').onclick = () => saveReport({ snapshot: true, print: false });
+    const frMenu = document.getElementById('fr-main-menu');
+    if (frMenu) frMenu.onclick = () => navigate('dashboard');
+    document.getElementById('fr-print-only').onclick = () => printReport(recompute());
+    document.getElementById('fr-fill-logbook-rob')?.addEventListener('click', () => {
+      fillLogbookFromVoyageRob();
+    });
+
+    document.getElementById('fr-toggle-calc').onclick = (e) => {
+      view.showCalcSheet = !view.showCalcSheet;
+      const host = document.getElementById('fr-calc-sheet');
+      host.hidden = !view.showCalcSheet;
+      e.target.textContent = view.showCalcSheet ? 'Hide' : 'Show on screen';
+      if (view.showCalcSheet) host.innerHTML = buildCalcSheetHtml(view.computed);
+    };
+
+    wrap.querySelectorAll('[data-print-snapshot]').forEach((btn) => {
+      btn.onclick = () => {
+        let snap = (currentBundle().reportHistory || []).find((s) => s.id === btn.dataset.printSnapshot);
+        if (!snap && btn.dataset.printSnapshot === '__draft__' && view.form) {
+          snap = { form: view.form, id: '__draft__', isDraft: true };
+        }
+        if (!snap || !snap.form) { showToast('That saved report has no sheet to print'); return; }
+        // Computed from the saved form, not from the sheet on screen, so
+        // printing an old report never disturbs the one being worked on.
+        const computed = Core.computeFuelReport(currentBundle(), snap.form, view.conversion);
+        if (!snap.isDraft && snap.id !== '__draft__') {
+          warnIfDrifted(snapshotDrift(snap, Core.snapshotFromReport(computed)));
+        }
+        printReport(computed);
+      };
+    });
+    wrap.querySelectorAll('[data-load-snapshot]').forEach((btn) => {
+      btn.onclick = () => {
+        let snap = (currentBundle().reportHistory || []).find((s) => s.id === btn.dataset.loadSnapshot);
+        if (!snap && btn.dataset.loadSnapshot === '__draft__' && view.form) {
+          snap = { form: view.form, id: '__draft__', isDraft: true };
+        }
+        if (!snap) return;
+        view.pendingForm = snap.form;
+        /* A loaded report becomes the CURRENT monitoring, not just what the sheet shows: the
+           After-bunkering GET DATA, the readings and the next render all read the held copy, so
+           leaving it on the old one sent them back to older soundings. */
+        if (!snap.isDraft && snap.id !== '__draft__' && STATE.bundle) {
+          STATE.bundle.fuelReport = { ...snap.form, updatedAt: new Date().toISOString() };
+          view.form = STATE.bundle.fuelReport;
+          saveReport({ snapshot: false, quiet: true }).catch(() => {});
+        }
+        navigate('fuel-report');
+        showToast(snap.isDraft || snap.id === '__draft__'
+          ? 'Draft loaded for editing'
+          : 'Saved report loaded into the sheet');
+      };
+    });
+    wrap.querySelectorAll('[data-del-snapshot]').forEach((btn) => {
+      btn.onclick = async () => {
+        if (!confirm('Delete this saved report?')) return;
+        try {
+          const res = await Api.deleteFuelReportSnapshot(STATE.activeVesselId, btn.dataset.delSnapshot);
+          STATE.bundle.reportHistory = res.history || [];
+          navigate('fuel-report');
+        } catch (err) {
+          showToast(err.message);
+        }
+      };
+    });
+  }
+
+  /* ---------- save ---------- */
+
+  function sameSavedForm(a, b) {
+    const strip = (form) => {
+      if (!form || typeof form !== 'object') return form;
+      const copy = { ...form };
+      delete copy.updatedAt;
+      return copy;
+    };
+    try { return JSON.stringify(strip(a)) === JSON.stringify(strip(b)); }
+    catch (_) { return false; }
+  }
+
+  /* ---------- the sheet as a draft: every edit is kept, even if the program closes ---------- */
+  const DRAFT_DELAY_MS = 700;
+  let draftTimer = null;
+  const mirrorKey = () => 'tankDraft:' + STATE.activeVesselId + ':fuel-report';
+  function clearDraftMirror() {
+    clearTimeout(draftTimer); draftTimer = null;
+    try { localStorage.removeItem(mirrorKey()); } catch (_) { /* no storage */ }
+  }
+  function readDraftMirror() {
+    try { const m = JSON.parse(localStorage.getItem(mirrorKey()) || 'null'); return m && m.form ? m : null; } catch (_) { return null; }
+  }
+  function scheduleDraft() {
+    if (!view.form || view.vesselId !== STATE.activeVesselId) return;
+    /* written at once and in one step, so a closed window or a killed app still finds it */
+    try { localStorage.setItem(mirrorKey(), JSON.stringify({ ts: Date.now(), form: view.form })); } catch (_) { /* full or blocked */ }
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(flushDraft, DRAFT_DELAY_MS);
+  }
+  async function flushDraft() {
+    if (!draftTimer) return;
+    clearTimeout(draftTimer); draftTimer = null;
+    if (!view.form || !document.querySelector('.fuel-report-page')) return;
+    try { await saveReport({ snapshot: false, quiet: true, draft: true }); } catch (err) { console.warn('monitoring draft', err); }
+  }
+
+  async function saveReport({ snapshot = false, print = false, quiet = false, draft = false } = {}) {
+    /* The bundle the app holds, not currentBundle(): inside Cheng AIO that is a copy with the ship's
+       identity laid over it, and a report written onto the copy was gone at the next render, which
+       read the held bundle and put the OLD report back until the program was closed and reopened. */
+    const bundle = STATE.bundle;
+    const form = { ...view.form, updatedAt: new Date().toISOString() };
+    /* A draft is the sheet as it stands while it is being filled in: kept, but not yet the ship's current readings. */
+    const body = { form, snapshot, syncReadings: !draft };
+
+    bundle.fuelReport = form;
+    const gradesChanged = draft ? { tanks: false } : Core.applyCarriedFuelGrades(bundle, form);
+    const computed = recompute();
+    if (!draft) {
+      bundle.readings = Core.readingsFromReport(bundle, computed);
+      if (typeof persistPart === 'function') {
+        await persistPart('readings', bundle.readings);
+      }
+    }
+    let fileSnapshot = !!snapshot;
+    if (snapshot) {
+      const entry = Core.snapshotFromReport(computed);
+      const prev = filedReports(bundle.reportHistory)[0];
+      const sameForm = prev && prev.form && entry.form && sameSavedForm(prev.form, entry.form);
+      if (!sameForm) {
+        bundle.reportHistory = filedReports([entry, ...(bundle.reportHistory || [])]).slice(0, 50);
+        body.snapshotEntry = entry;
+      } else {
+        fileSnapshot = false;
+      }
+    }
+    body.snapshot = fileSnapshot;
+    await OfflineDB.idbSet('vessel:' + STATE.activeVesselId, bundle);
+    if (gradesChanged.tanks && typeof persistPart === 'function') {
+      await persistPart('tanks', bundle.tanks);
+    }
+
+    const pushServer = async () => {
+      try {
+        const res = await Api.saveFuelReport(STATE.activeVesselId, body);
+        bundle.fuelReport = res.form;
+        if (res.history) bundle.reportHistory = filedReports(res.history);
+        if (res.stale && !quiet) showToast('A newer report was already saved here — this one is filed in Saved reports');
+        await OfflineDB.idbSet('vessel:' + STATE.activeVesselId, bundle);
+        if (!quiet) showToast(snapshot ? 'Report saved' : 'Draft saved');
+      } catch {
+        await Api.mutate(`/api/vessels/${STATE.activeVesselId}/fuel-report`, { method: 'PUT', body: { ...body, late: true } });
+        if (!quiet) showToast('Saved offline — will sync when online');
+      }
+    };
+
+    if (!draft) { view.dirty = false; clearDraftMirror(); }
+    /* The report goes into the database BEFORE the printer dialog opens. It used to be sent after
+       the dialog closed, and a dialog that never reports back (the Android print screen, a closed
+       window, the app put away) left the new report on this screen only: the next load read the
+       database, and the OLD report came back. */
+    await pushServer();
+    if (print) {
+      Branding.beginPrintHold();
+      try {
+        printReport(computed);
+      } catch (err) {
+        Branding.endPrintHold();
+        throw err;
+      }
+      /* Once the printer dialog is done, show the saved list with the report just filed. */
+      Branding.afterPrintHold(() => {
+        if (STATE.route && STATE.route.page === 'fuel-report' && !view.dirty) navigate('fuel-report');
+      });
+      return;
+    }
+    if (!quiet) navigate('fuel-report');
+  }
+
+  async function flushIfDirty() {
+    const bundle = STATE.bundle;
+    if (view.dirty && view.form) {
+      await saveReport({ snapshot: true, print: false, quiet: true });
+      return;
+    }
+    /* A Save only that used to file a draft only still has to become a saved
+       report before a server check, or the push leaves it behind. */
+    if (!bundle || !bundle.fuelReport) return;
+    const prev = filedReports(bundle.reportHistory)[0];
+    if (prev && prev.form && sameSavedForm(prev.form, bundle.fuelReport)) return;
+    view.form = bundle.fuelReport;
+    await saveReport({ snapshot: true, print: false, quiet: true });
+  }
+
+  /* ---------- printed document ---------- */
+
+  /**
+   * Every printed sheet in the suite carries the same three-part head: ship on
+   * the left, title in the middle, voyage number on the right. Tank Chief used
+   * to print a fixed "Report / Official" in that right-hand slot, which put a
+   * sounding sheet and a noon report side by side looking like two different
+   * documents. The voyage number is what the office files them under, so that
+   * is what goes there, on both programs.
+   *
+   * The subtitle is also cleaned of a leading vessel name: it already prints
+   * above, in bold, on the left.
+   */
+  function voyageNumber() {
+    const b = currentBundle() || {};
+    return String((b.voyage && b.voyage.voyageNo) || (b.vessel && b.vessel.voyageNo) || '').trim();
+  }
+
+  function masthead(title, subtitle, opts) {
+    const vessel = ((currentBundle() && currentBundle().vessel) || {}).name || 'Vessel';
+    const o = opts || {};
+    let sub = String(subtitle || '').trim();
+    if (vessel && sub.startsWith(vessel)) {
+      sub = sub.slice(vessel.length).replace(/^\s*[·|,-]\s*/, '').trim();
+    }
+    if (typeof Branding !== 'undefined' && Branding.printDocHeader) {
+      return Branding.printDocHeader({
+        vessel,
+        title: title || '',
+        subtitle: sub,
+        badge: o.badge || 'A4',
+        rightLabel: o.rightLabel || 'Voyage No.',
+        rightValue: o.rightValue || voyageNumber() || '—',
+      });
+    }
+    return `<header class="calib-print-masthead">
+      <div><h1>${esc(title)}</h1><div class="sub">${esc(sub)}</div></div>
+      <div class="calib-print-badge">OFFICIAL · A4</div>
+    </header>`;
+  }
+
+  function footer(label) {
+    return `<footer class="calib-print-footer">
+      <span>${esc(label)}</span><span>Printed ${esc(nowStamp())}</span>
+    </footer>`;
+  }
+
+  /* ---------- signature & vessel logo on printed sheets ---------- */
+
+  function vesselAssets() {
+    return (currentBundle() && currentBundle().assets) || { vesselLogo: null, chEngSignatures: {} };
+  }
+
+  /** Signatures are filed under the officer's name, lower-cased. */
+  function signatureKey(name) {
+    return String(name || '').trim().toLowerCase();
+  }
+
+  function looseSignatureKey(name) {
+    return signatureKey(name).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * The signature belonging to a given Chief Engineer, or null. Filing them by
+   * name means a sheet reprinted after a crew change carries the signature of
+   * the officer named on it, not the incoming one's.
+   *
+   * Lookup is loose: "M. Endozo" and "m endozo" are the same officer. If the
+   * live Chief's image was saved under a blank key (name typed after upload)
+   * and it is the only signature on the ship, that image still prints.
+   */
+  function signatureFor(name) {
+    const map = (vesselAssets().chEngSignatures || {});
+    const exact = signatureKey(name);
+    if (exact && map[exact]) return map[exact];
+    const trimmed = String(name || '').trim();
+    if (trimmed && map[trimmed]) return map[trimmed];
+    const loose = looseSignatureKey(name);
+    const urls = [];
+    for (const [k, url] of Object.entries(map)) {
+      if (typeof url !== 'string' || !url) continue;
+      if (!urls.includes(url)) urls.push(url);
+      if (loose && looseSignatureKey(k) === loose) return url;
+    }
+    const live = looseSignatureKey(vesselChiefEngineer());
+    if ((!loose || loose === live) && urls.length === 1) return urls[0];
+    if ((!loose || loose === live) && map['']) return map[''];
+    return null;
+  }
+
+  function vesselChiefEngineer() {
+    return ((currentBundle() && currentBundle().vessel) || {}).chiefEngineer || '';
+  }
+
+  /**
+   * The signature footer every printed sheet ends with: the signature image sits
+   * in the space directly above the line, so it reads as signed over it, and the
+   * vessel logo sits just after the block.
+   */
+  function printSignatureBlock(signerName, role) {
+    const signer = String(signerName || vesselChiefEngineer() || '').trim();
+    const sig = signatureFor(signer);
+    const logo = vesselAssets().vesselLogo;
+    return `<div class="fr-print-signrow${logo ? ' has-stamp' : ''}">
+      <div class="fr-print-sign">
+        <div class="fr-print-sign-space">${sig ? `<img src="${esc(sig)}" alt="">` : ''}</div>
+        <div class="fr-print-sign-line"></div>
+        <div class="fr-print-sign-name">${esc(signer || '—')}</div>
+        <div class="fr-print-sign-role">${esc(role || 'Chief Engineer')}</div>
+      </div>
+      ${logo ? `<div class="fr-print-logo"><img src="${esc(logo)}" alt=""></div>` : ''}
+    </div>`;
+  }
+
+  function metaGrid(entries) {
+    if (typeof Branding !== 'undefined' && Branding.printMetaGrid) {
+      return Branding.printMetaGrid(
+        entries.map(([k, v]) => ({ label: k, value: esc(v ?? '—') })),
+        Math.min(4, Math.max(3, entries.length >= 6 ? 3 : 4)),
+      );
+    }
+    return `<div class="calib-print-meta">${entries.map(([k, v]) =>
+      `<div><span class="k">${esc(k)}</span><span class="v">${esc(v ?? '—')}</span></div>`).join('')}</div>`;
+  }
+
+  function printSectionTable(section, options) {
+    const moved = section.rows.filter((r) => r.moved);
+    const rows = section.rows.map((r) => `<tr>
+      <td class="fr-print-name">${esc(r.name)}${r.moved ? ' *' : ''}</td>
+      <td class="fr-print-label">${esc(r.fuelTypeLabel)}</td>
+      <td>${n(Core.mmToCm(r.reading, { soundingUnit: r.soundingUnit }), 1)}</td>
+      <td class="fr-print-label">${esc(r.methodLabel)}</td>
+      <td>${n(r.tempC, 1)}</td>
+      <td>${n(r.capacity100M3, 1)}</td>
+      <td>${n(r.measuredM3, 3)}</td>
+      <td>${pct(r.volumePercent)}</td>
+      <td>${n(r.density15, 4)}</td>
+      <td>${n(r.vcf, 4)}</td>
+      <td>${n(r.gsv15M3, 3)}</td>
+      <td>${n(r.wcf, 4)}</td>
+      <td class="fr-print-weight">${n(r.weightAirMT, 3)}</td>
+    </tr>`).join('');
+    const t = section.totals;
+    return `<section class="pr-section">
+      <h3 class="pr-section-title">${esc(section.title)}</h3>
+      <div class="pr-section-body">
+      <table class="fr-print-table">
+        <thead><tr>
+          <th>Tank</th><th>Fuel</th><th>Actual (cm)</th><th>Method</th><th>Temp °C</th>
+          <th>100% m³</th><th>Measured m³</th><th>Vol %</th><th>Density @15</th>
+          <th>VCF 54B</th><th>GSV @15 m³</th><th>WCF 56</th><th>Weight air MT</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <th colspan="5">TOTAL</th>
+          <td>${n(t.capacity100M3, 1)}</td>
+          <td>${n(t.measuredM3, 3)}</td>
+          <td colspan="3"></td>
+          <td>${n(t.gsv15M3, 3)}</td>
+          <td></td>
+          <td class="fr-print-weight">${n(t.weightAirMT, 3)}</td>
+        </tr></tfoot>
+      </table>
+      <p class="calib-print-note">100% capacity in MT = 100% m³ × ${options.capacityMtFactor}
+        · ${(options.safeFillRatio * 100).toFixed(0)}% filling limit = ${n(t.capacity85MT, 2)} MT</p>
+      ${moved.length ? `<p class="calib-print-note">* ${moved.map((r) => esc(r.name)).join(', ')} —
+        normally ${esc(SECTION_SHORT[moved[0].homeSection] || '')} tank(s), counted here because they are
+        carrying ${esc(moved.map((r) => r.fuelTypeLabel).join(' / '))} this voyage.</p>` : ''}
+      ${section.rows.some((r) => r.pinned) ? `<p class="calib-print-note">Pinned:
+        ${section.rows.filter((r) => r.pinned).map((r) => esc(r.name)).join(', ')} — held in this table
+        against the fuel type entered.</p>` : ''}
+      </div>
+    </section>`;
+  }
+
+  function prettyDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(`${iso}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${String(d.getDate()).padStart(2, '0')}-${months[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
+  }
+
+  function fact(label, value) {
+    return `<div class="fr-tc-fact"><span>${esc(label)}</span><b>${value}</b></div>`;
+  }
+
+  function printMasthead(c, opts) {
+    const title = (opts && opts.title) || 'TANK CONDITION';
+    const showFacts = !opts || opts.showFacts !== false;
+    const reportType = c.header.reportType || '—';
+    const imo = c.vessel.imo ? `IMO ${c.vessel.imo}` : 'IMO —';
+    const dateTime = c.header.dateTime || prettyDate(c.header.date);
+    /* Classic Tank Condition face (pre–Voyage theme): vessel | title | report
+       type, then a plain facts strip. That layout is what fits one A4. */
+    const facts = showFacts ? `<div class="fr-tc-facts">
+      ${fact('Date', esc(dateTime || '—'))}
+      ${fact('Port', esc(c.header.port || '—'))}
+      ${fact('Voyage No.', esc(c.header.voyageNo || '—'))}
+      ${fact('Heel', esc(c.header.heelLabel || '—'))}
+      ${fact('FW Draft', `${n(c.header.draftFwd, 2)} m`)}
+      ${fact('Aft Draft', `${n(c.header.draftAft, 2)} m`)}
+      ${fact('Mean Draft', `${n(c.header.meanDraft, 2)} m`)}
+      ${fact('Trim', `${n(c.header.trim, 2)} (${esc(c.header.trimLabel)})`)}
+      ${fact('S/W Temp', `${n(c.header.seaTemp, 0, '—')} °C`)}
+      ${fact('E/R Temp', `${n(c.header.engineRoomTemp, 0, '—')} °C`)}
+    </div>` : '';
+    return `<header class="fr-tc-masthead">
+      <div class="fr-tc-title-row">
+        <div class="fr-tc-ident-left">
+          <div class="fr-tc-ident-name">${esc(c.vessel.name || '—')}</div>
+          <div class="fr-tc-ident-imo">${esc(imo)}</div>
+        </div>
+        <h1>${esc(title)}</h1>
+        <div class="fr-tc-ident-right">
+          <span>${esc(Branding.APP_NAME)} REPORT</span>
+          <b>${esc(reportType)}</b>
+        </div>
+      </div>
+      ${facts}
+    </header>`;
+  }
+
+  function printConditionSection(section, options) {
+    const moved = section.rows.filter((r) => r.moved);
+    const rows = section.rows.map((r) => `<tr>
+      <td class="fr-print-name">${esc(r.name)}${r.moved ? ' *' : ''}</td>
+      <td class="fr-print-label">${esc(r.fuelTypeLabel)}</td>
+      <td>${n(Core.mmToCm(r.reading, { soundingUnit: r.soundingUnit }), 1)}</td>
+      <td class="fr-print-label">${esc(r.methodLabel)}</td>
+      <td>${n(r.tempC, 1)}</td>
+      <td>${n(r.capacity100M3, 1)}</td>
+      <td>${n(r.measuredM3, 3)}</td>
+      <td>${pct(r.volumePercent)}</td>
+      <td>${n(r.density15, 4)}</td>
+      <td>${n(r.vcf, 4)}</td>
+      <td>${n(r.gsv15M3, 3)}</td>
+      <td>${n(r.wcf, 4)}</td>
+      <td class="fr-print-weight">${n(r.weightAirMT, 3)}</td>
+    </tr>`).join('');
+    const t = section.totals;
+    return `<section class="fr-tc-block">
+      <div class="fr-tc-block-head">
+        <h3>${esc(section.title)}</h3>
+        <span>${t.tanks} tank${t.tanks === 1 ? '' : 's'}</span>
+      </div>
+      <table class="fr-tc-table">
+        <thead>
+          <tr>
+            <th class="fr-print-name">Tank</th>
+            <th>Fuel</th>
+            <th>Actual<br>cm</th>
+            <th>Method</th>
+            <th>Temp<br>°C</th>
+            <th>100%<br>m³</th>
+            <th>Measured<br>m³</th>
+            <th>Vol %</th>
+            <th>Density<br>@15°C</th>
+            <th>VCF<br>54B</th>
+            <th>GSV @15<br>m³</th>
+            <th>WCF<br>56</th>
+            <th>Weight<br>air MT</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr>
+            <th class="fr-print-name" colspan="5">${esc(section.totalLabel || 'TOTAL')}${
+              t.soundedWithoutWeight && t.soundedWithoutWeight.length
+                ? ` (${t.tanksWeighed} of ${t.tanks} tanks)` : ''}</th>
+            <td>${n(t.capacity100M3, 1)}</td>
+            <td>${n(t.measuredM3, 3)}</td>
+            <td colspan="3"></td>
+            <td>${n(t.gsv15M3, 3)}</td>
+            <td></td>
+            <td class="fr-tc-total-mt">${n(t.weightAirMT, 3)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="fr-tc-capline">
+        <span>${esc(section.totalLabel || 'TOTAL')} (MT) <b>${n(t.weightAirMT, 3)}</b></span>
+        <span>100% m³ × ${options.capacityMtFactor} · ${(options.safeFillRatio * 100).toFixed(0)}% limit <b>${n(t.capacity85MT, 2)} MT</b></span>
+      </div>
+      ${t.soundedWithoutWeight && t.soundedWithoutWeight.length
+        ? `<p class="calib-print-note">Sounded with no density, so outside the MT total:
+            ${t.soundedWithoutWeight.map((n) => esc(n)).join(', ')}.</p>` : ''}
+      ${moved.length ? `<p class="calib-print-note">* ${moved.map((r) => esc(r.name)).join(', ')} counted in this block from the fuel type entered this voyage.</p>` : ''}
+    </section>`;
+  }
+
+  function printConditionPage(c) {
+    const grades = c.grades.filter((g) => g.tanks > 0 || g.logbookMT != null);
+    /* A grade missing a density is short by that whole tank, and the difference
+       against the log book moves with it — so the figure is marked rather than
+       left to read as a real discrepancy. */
+    const shortGrades = grades.filter((g) => (g.soundedWithoutWeight || []).length);
+    const surveyRows = grades.map((g) => {
+      const short = (g.soundedWithoutWeight || []).length;
+      return `<tr>
+      <td class="fr-print-name">${esc(g.label)}</td>
+      <td>${n(g.actualMT, 3, '—')}${short ? ' †' : ''}</td>
+      <td>${n(g.logbookMT, 3, '—')}</td>
+      <td class="${!short && g.differenceMT != null && Math.abs(g.differenceMT) > 0.001 ? 'fr-tc-diff' : ''}">${signed(g.differenceMT, 3) || '—'}${short ? ' †' : ''}</td>
+    </tr>`;
+    }).join('');
+    /* Group totals — residual (HFO/VLSFO) kept separate from distillate
+       (MO/MGO/LSMGO). Never one combined fuel total. */
+    const groupTotalRows = (Core.SECTIONS || []).map((sec) => {
+      const members = (c.grades || []).filter((g) => (sec.grades || []).includes(g.id));
+      if (!members.length) return '';
+      const actual = members.reduce((s, g) => s + (Number(g.actualMT) || 0), 0);
+      const logbook = members.reduce((s, g) => s + (Number(g.logbookMT) || 0), 0);
+      const diff = actual - logbook;
+      const anyActual = members.some((g) => g.actualMT != null);
+      const anyLog = members.some((g) => g.logbookMT != null);
+      return `<tr>
+        <th class="fr-print-name">${esc(sec.totalLabel || sec.shortLabel || sec.title)}</th>
+        <td><b>${anyActual ? n(actual, 3) : '—'}</b></td>
+        <td><b>${anyLog ? n(logbook, 3) : '—'}</b></td>
+        <td><b>${anyActual && anyLog ? signed(diff, 3) : '—'}</b></td>
+      </tr>`;
+    }).join('');
+    const lubeRows = c.lube.rows.map((r) => `<tr>
+      <td class="fr-print-name">${esc(r.label)}</td>
+      <td>${n(r.litres, 0, '—')}</td>
+      <td>${n(r.mt, 3, '—')}</td>
+    </tr>`).join('');
+    const receivedRows = c.received.map((r) =>
+      `<tr><td class="fr-print-name">${esc(r.label)}</td><td>${n(r.value, 3, '—')}</td></tr>`).join('');
+    const consVal = (list, id) => n((list.find((x) => x.id === id) || {}).value, 2, '—');
+    const me = c.consumption || [];
+
+    return `<section class="calib-print-page fr-tc-page">
+      ${printMasthead(c)}
+      ${c.sections.map((s) => printConditionSection(s, c.options)).join('')}
+      <div class="fr-tc-cards">
+        <div class="fr-tc-card">
+          <h4>Lube Oil Quantities</h4>
+          <table class="fr-tc-mini">
+            <thead><tr><th>Category</th><th>LTRS</th><th>MT</th></tr></thead>
+            <tbody>${lubeRows}</tbody>
+            <tfoot><tr><th>TOTAL</th><td>${n(c.lube.totalLitres, 0)}</td><td>${n(c.lube.totalMT, 3)}</td></tr></tfoot>
+          </table>
+        </div>
+        <div class="fr-tc-card">
+          <h4>Received Quantities</h4>
+          <table class="fr-tc-mini">
+            <thead><tr><th>Category</th><th>MT / LTRS</th></tr></thead>
+            <tbody>${receivedRows}</tbody>
+          </table>
+        </div>
+        <div class="fr-tc-card">
+          <h4>Daily Fuel Consumption</h4>
+          <table class="fr-tc-mini">
+            <thead><tr>${Core.CONSUMPTION_FIELDS.map((f) => `<th>${esc(f.label)}</th>`).join('')}</tr></thead>
+            <tbody>
+              <tr>${Core.CONSUMPTION_FIELDS.map((f) => `<td>${consVal(me, f.id)}</td>`).join('')}</tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="fr-tc-card">
+          <h4>Survey Summary</h4>
+          <table class="fr-tc-mini">
+            <thead><tr><th>Grade</th><th>Monitoring</th><th>Log book</th><th>Difference</th></tr></thead>
+            <tbody>${surveyRows || '<tr><td colspan="4">—</td></tr>'}</tbody>
+            <tfoot>
+              ${groupTotalRows}
+              ${shortGrades.length ? `<tr><td colspan="4" class="fr-print-name">
+              † short of ${shortGrades.reduce((a, g) => a + g.soundedWithoutWeight.length, 0)} sounded tank(s)
+              with no density — the difference is not a real discrepancy until they are entered.</td></tr>` : ''}
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      <div class="fr-tc-signoff">
+        ${printSignatureBlock(c.signature.preparedBy, c.signature.rank)}
+      </div>
+      ${footer(`${c.vessel.name} · tank condition · ${c.header.dateTime}`)}
+    </section>`;
+  }
+
+  function printAnnexPage(c) {
+    const extraRows = [];
+    for (const section of c.sections) {
+      for (const r of section.rows) {
+        extraRows.push(`<tr>
+          <td class="fr-print-name">${esc(r.name)}</td>
+          <td>${esc(r.fuelTypeLabel)}</td>
+          <td>${esc(r.methodLabel)}</td>
+          <td>SG</td>
+          <td>${n(r.density15 != null ? r.density15 : r.unitValue, 4)}</td>
+          <td>${r.inUse ? 'YES' : ''}</td>
+          <td>${pct(r.volumePercent)}</td>
+        </tr>`);
+      }
+    }
+    const temps = [15, 25, 30, 40, 50, 60, 70];
+    const densities = [];
+    for (const section of c.sections) {
+      for (const r of section.rows) {
+        if (r.density15 != null && !densities.some((d) => d.density === r.density15)) {
+          densities.push({ density: r.density15, tempC: r.tempC, name: r.name });
+        }
+      }
+    }
+    const vcfHead = temps.map((t) => `<th>${t}</th>`).join('');
+    const vcfRows = densities.map((d) => `<tr>
+      <td class="fr-print-name">${n(d.density, 4)}</td>
+      ${temps.map((t) => {
+        const detail = window.vcfDetail54B(d.density, t);
+        const hit = d.tempC !== '' && Math.abs(Number(d.tempC) - t) < 0.5;
+        return `<td class="${hit ? 'fr-print-used' : ''}">${n(detail.vcf, 4)}</td>`;
+      }).join('')}
+      <td>${n(window.wcf56(d.density), 4)}</td>
+    </tr>`).join('') || '<tr><td colspan="9">No densities entered</td></tr>';
+
+    return `<section class="calib-print-page fr-tc-page fr-tc-page-2">
+      ${printMasthead(c, { title: 'TANK CONDITION', showFacts: false })}
+      <h3 class="fr-print-h3">Entry fields not shown on page 1</h3>
+      <table class="fr-print-table">
+        <thead><tr>
+          <th class="fr-print-name">Tank</th><th>Fuel</th><th>Method</th>
+          <th>SG</th><th>Dens @15</th><th>In use</th><th>Vol %</th>
+        </tr></thead>
+        <tbody>${extraRows.join('')}</tbody>
+      </table>
+      <h3 class="fr-print-h3">Calculation sheet</h3>
+      <table class="fr-print-table fr-print-calc">
+        <thead><tr>
+          <th>Tank</th><th>Reading</th><th>To table</th><th>Trim corr.</th><th>Heel corr.</th>
+          <th>Observed m³</th><th>VCF</th><th>GSV m³</th><th>WCF</th><th>Weight MT</th>
+        </tr></thead>
+        <tbody>${calcAnnexRows(c)}</tbody>
+      </table>
+      <h3 class="fr-print-h3">ASTM 54B / 56 at densities used (°C)</h3>
+      <table class="fr-print-table">
+        <thead><tr><th>Density @15</th>${vcfHead}<th>WCF</th></tr></thead>
+        <tbody>${vcfRows}</tbody>
+      </table>
+      ${printSignatureBlock(c.signature.preparedBy, c.signature.rank)}
+      ${footer(`${c.vessel.name} · annex · ${c.header.dateTime}`)}
+    </section>`;
+  }
+
+  function calcAnnexRows(c) {
+    const rows = [];
+    for (const section of c.sections) {
+      for (const r of section.rows) {
+        if (r.measuredM3 == null) continue;
+        const t = r.trace;
+        rows.push(`<tr>
+          <td class="fr-print-name">${esc(r.name)}</td>
+          <td>${esc(r.methodLabel)} ${n(Core.mmToCm(r.reading, { soundingUnit: r.soundingUnit }), 1)}</td>
+          <td>${t.flipped ? `${esc(t.nativeMethod)} ${n(t.nativeReading, 0)}` : 'as read'}</td>
+          <td>${corrCell(r, t.trimCorrection)}</td>
+          <td>${corrCell(r, t.listCorrection)}</td>
+          <td>${n(r.measuredM3, 3)}</td>
+          <td>${n(r.vcf, 4)}</td>
+          <td>${n(r.gsv15M3, 3)}</td>
+          <td>${n(r.wcf, 4)}</td>
+          <td class="fr-print-weight">${n(r.weightAirMT, 3)}</td>
+        </tr>`);
+      }
+    }
+    return rows.join('') || '<tr><td colspan="10">No soundings entered</td></tr>';
+  }
+
+  function printSummaryPage(c) {
+    return printConditionPage(c);
+  }
+
+  /**
+   * The derivation the entry grid hides: how each raw sounding became a weight.
+   */
+  function corrCell(row, correction) {
+    if (correction) return n(correction, 3);
+    // 'direct' tanks read volume straight off the trim grid — no separate correction step.
+    return row.calcType === 'direct' ? 'in grid' : '0.000';
+  }
+
+  function calcRowsHtml(c) {
+    const rows = [];
+    for (const section of c.sections) {
+      for (const r of section.rows) {
+        if (r.measuredM3 == null) continue;
+        const t = r.trace;
+        rows.push(`<tr>
+          <td class="fr-print-name">${esc(r.name)}</td>
+          <td>${esc(r.methodLabel)} ${n(Core.mmToCm(r.reading, { soundingUnit: r.soundingUnit }), 1)}</td>
+          <td>${t.flipped ? `${esc(t.nativeMethod)} ${n(t.nativeReading, 0)} (pipe ${n(t.pipeHeight, 0)})` : 'as read'}</td>
+          <td>${esc(r.calcType)} · step ${n(t.soundingIncrement, 0)}</td>
+          <td>${signed(t.trimUsed, 2)} m ${esc(Core.trimSense(t.trimUsed))}</td>
+          <td>${corrCell(r, t.trimCorrection)}</td>
+          <td>${signed(t.heelUsed, 1)}°</td>
+          <td>${corrCell(r, t.listCorrection)}</td>
+          <td>${n(t.correctedReading, 1)}</td>
+          <td>${n(r.measuredM3, 3)}</td>
+          <td>${t.vcf ? n(t.vcf.alpha, 7) : '—'}</td>
+          <td>${t.vcf ? n(t.vcf.deltaT, 2) : '—'}</td>
+          <td>${n(r.vcf, 4)}</td>
+          <td>${n(r.gsv15M3, 3)}</td>
+          <td>${n(r.wcf, 4)}</td>
+          <td class="fr-print-weight">${n(r.weightAirMT, 3)}</td>
+        </tr>`);
+      }
+    }
+    return rows.join('') || '<tr><td colspan="16">No soundings entered</td></tr>';
+  }
+
+  function printCalculationPage(c) {
+    return `<section class="calib-print-page">
+      ${masthead('CALCULATION SHEET', `${c.vessel.name} · ${c.header.dateTime}`)}
+      <p class="calib-print-note">Derivation of every sounded tank on the previous page — the columns the
+        entry sheet keeps hidden. Trim is applied as trim by the stern; corrections are read from the tank's
+        own calibration grid by double interpolation at the table increment.</p>
+      <table class="fr-print-table fr-print-calc">
+        <thead><tr>
+          <th>Tank</th><th>Reading</th><th>To table scale</th><th>Calibration</th>
+          <th>Trim</th><th>Trim corr.</th><th>Heel</th><th>Heel corr.</th><th>Corrected</th>
+          <th>Observed m³</th><th>α 54B</th><th>ΔT</th><th>VCF</th><th>GSV m³</th><th>WCF</th><th>Weight MT</th>
+        </tr></thead>
+        <tbody>${calcRowsHtml(c)}</tbody>
+      </table>
+      ${footer(`${c.vessel.name} · calculation sheet`)}
+    </section>`;
+  }
+
+  function printFormulaPage(c) {
+    const densities = [];
+    for (const section of c.sections) {
+      for (const r of section.rows) {
+        if (r.density15 != null && !densities.some((d) => d.density === r.density15)) {
+          densities.push({ density: r.density15, tempC: r.tempC, name: r.name });
+        }
+      }
+    }
+    const temps = [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90];
+    const vcfHead = temps.map((t) => `<th>${t}</th>`).join('');
+    const vcfRows = densities.map((d) => `<tr>
+      <td class="fr-print-name">${n(d.density, 4)}</td>
+      ${temps.map((t) => {
+        const detail = window.vcfDetail54B(d.density, t);
+        const hit = d.tempC !== '' && Math.abs(Number(d.tempC) - t) < 0.5;
+        return `<td class="${hit ? 'fr-print-used' : ''}">${n(detail.vcf, 4)}</td>`;
+      }).join('')}
+      <td>${n(window.wcf56(d.density), 4)}</td>
+    </tr>`).join('') || '<tr><td colspan="16">No densities entered</td></tr>';
+
+    return `<section class="calib-print-page">
+      ${masthead('FORMULAS & REFERENCE TABLES', `${c.vessel.name} · ${c.header.dateTime}`)}
+      <h3 class="fr-print-h3">Formulas applied</h3>
+      <table class="fr-print-table fr-print-formulas">
+        <thead><tr><th>Step</th><th>Formula</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td class="fr-print-name">Mean draft</td><td>(draft fwd + draft aft) ÷ 2</td><td>Report header</td></tr>
+          <tr><td class="fr-print-name">Trim</td><td>draft fwd − draft aft; positive is down by the bow (the book's TRIM BY STEM columns), negative down by the stern</td><td>Report header</td></tr>
+          <tr><td class="fr-print-name">Dip ↔ ullage</td><td>reading on table scale = sounding-pipe height − reading</td><td>Setup sheet</td></tr>
+          <tr><td class="fr-print-name">Trim correction</td><td>double interpolation on sounding × trim grid ÷ correction divisor</td><td>Tank calibration table</td></tr>
+          <tr><td class="fr-print-name">Heel correction</td><td>double interpolation on corrected sounding × heel grid ÷ correction divisor</td><td>Tank calibration table</td></tr>
+          <tr><td class="fr-print-name">Observed volume</td><td>volume curve / trim-volume grid at the corrected sounding</td><td>Tank calibration table</td></tr>
+          <tr><td class="fr-print-name">Volume %</td><td>observed volume ÷ 100% capacity × 100</td><td>Data sheet</td></tr>
+          <tr><td class="fr-print-name">VCF (ASTM 54B)</td><td>exp(−α·ΔT·(1 + 0.8·α·ΔT)), ΔT = temp − 15 °C, α from the density band</td><td>ASTM Tables sheet</td></tr>
+          <tr><td class="fr-print-name">GSV @ 15 °C</td><td>observed volume × VCF</td><td>Data sheet</td></tr>
+          <tr><td class="fr-print-name">WCF (ASTM 56)</td><td>density @15 °C − 0.0011 (air buoyancy)</td><td>ASTM Tables sheet</td></tr>
+          <tr><td class="fr-print-name">Weight in air</td><td>GSV @ 15 °C × WCF</td><td>Data sheet</td></tr>
+          <tr><td class="fr-print-name">100% capacity in MT</td><td>100% volume m³ × ${c.options.capacityMtFactor}</td><td>Report sheet</td></tr>
+          <tr><td class="fr-print-name">Filling limit</td><td>100% capacity MT × ${c.options.safeFillRatio}</td><td>Report sheet</td></tr>
+          <tr><td class="fr-print-name">Lube oil MT</td><td>litres × ${c.lube.density} ÷ 1000</td><td>Report sheet</td></tr>
+          <tr><td class="fr-print-name">Log book difference</td><td>actual total MT − log book ROB MT</td><td>Data sheet</td></tr>
+        </tbody>
+      </table>
+      <h3 class="fr-print-h3">ASTM Table 54B (VCF) and Table 56 (WCF) at the densities used</h3>
+      <table class="fr-print-table">
+        <thead><tr><th>Density @15 °C</th>${vcfHead}<th>WCF</th></tr></thead>
+        <tbody>${vcfRows}</tbody>
+      </table>
+      <p class="calib-print-note">Columns are product temperature in °C; the shaded cell is the temperature
+        actually used for that density in this report. WCF is temperature-independent.</p>
+      ${footer(`${c.vessel.name} · formulas & reference tables`)}
+    </section>`;
+  }
+
+  function buildPrintPages(c) {
+    return printConditionPage(c);
+  }
+
+  /** Same content the printout carries, for the on-screen "show" toggle. */
+  function buildCalcSheetHtml(c) {
+    return `<div class="fuel-report-print-doc fr-preview">${printAnnexPage(c)}</div>`;
+  }
+
+  /** System printer picker on the live page (Save as PDF included). Keep the
+   *  print document until afterprint — tearing it down mid-preview freezes the UI. */
+  function printHtml(html) {
+    let root = document.getElementById('fuel-report-print-root');
+    if (!root) {
+      root = document.createElement('div');
+      root.id = 'fuel-report-print-root';
+      document.body.appendChild(root);
+    }
+    const previousTitle = document.title;
+    try {
+      Branding.printLiveDocument(
+        () => {
+          root.className = 'fuel-report-print-doc';
+          // Every printout goes through here, so the credit is added in one place
+          // rather than in each of the five sheet builders.
+          root.innerHTML = html + Branding.printCredit();
+          document.body.classList.add('printing-fuel-report');
+          document.title = '\u00A0';
+        },
+        () => {
+          document.title = previousTitle;
+          document.body.classList.remove('printing-fuel-report');
+        },
+      );
+    } catch (err) {
+      console.warn(err);
+      document.title = previousTitle;
+      document.body.classList.remove('printing-fuel-report');
+      showToast('Print failed');
+    }
+  }
+
+  /* The sheet on the Monitoring page is the live one: the Chief Engineer in post signs it now. A name
+     left on it from before a crew change, or typed in an old Prepared-by box, has no signature on file,
+     so the line printed blank. Saved sheets keep the name they were filed under; this is only the live one. */
+  function withLiveSigner(computed) {
+    const live = String(vesselChiefEngineer() || '').trim();
+    if (!live || !computed || !computed.signature) return computed;
+    if (String(computed.signature.preparedBy || '').trim() === live) return computed;
+    return Object.assign({}, computed, { signature: Object.assign({}, computed.signature, { preparedBy: live }) });
+  }
+
+  function printReport(computed) {
+    computed = withLiveSigner(computed);
+    const preview = document.getElementById('fr-live-preview');
+    if (preview) preview.innerHTML = buildPrintPages(computed);
+    printHtml(buildPrintPages(computed));
+  }
+
+
+  /* ---- Mobile / tablet sheet popups (Actual + Temp + SG) ---- */
+  function sheetPopupWanted() {
+    try {
+      /* Windows desktop / mouse: type in the grid. Coarse/touch or narrow
+         viewports keep the sheet popup so fat fingers are not fighting cells. */
+      if (window.matchMedia('(hover: hover) and (pointer: fine)').matches
+        && window.matchMedia('(min-width: 1101px)').matches) {
+        return false;
+      }
+      return window.matchMedia('(max-width: 1100px), (pointer: coarse)').matches;
+    } catch (_) {
+      return window.innerWidth <= 1100;
+    }
+  }
+
+  function closeSheetPopup() {
+    document.getElementById('tankSheetPopup')?.remove();
+    releaseSheetPopupSources();
+  }
+
+  /* True while a sheet popup is being built, so a focus bounce cannot reopen it. */
+  let _sheetPopupLock = false;
+
+  /* Select the whole value once, when the field is first entered, so the next
+     keystroke replaces it. Later clicks must leave the caret where the user
+     put it — re-selecting on pointerup froze the popup (focus jumped back to
+     the sheet cell and the dialog rebuilt on every key). */
+  function selectAllPopupField(el) {
+    if (!el || el.readOnly || el.disabled) return;
+    if (document.activeElement !== el) return;
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+    const t = String(el.type || 'text').toLowerCase();
+    if (t === 'checkbox' || t === 'radio' || t === 'button' || t === 'submit'
+      || t === 'file' || t === 'hidden' || t === 'range' || t === 'color'
+      || t === 'date' || t === 'time' || t === 'datetime-local' || t === 'month' || t === 'week') {
+      return;
+    }
+    try { el.select(); } catch (_) { /* ignore */ }
+    try {
+      const len = String(el.value ?? '').length;
+      if (typeof el.setSelectionRange === 'function') el.setSelectionRange(0, len);
+    } catch (_) { /* type=number */ }
+  }
+
+  function bindPopupSelectAll(root) {
+    if (!root || root.dataset.tspSelectAll === '1') return;
+    root.dataset.tspSelectAll = '1';
+    root.addEventListener('focusin', (e) => {
+      const el = e.target;
+      if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+      if (el.dataset.tspDidSelect === '1') return;
+      el.dataset.tspDidSelect = '1';
+      selectAllPopupField(el);
+    });
+    root.addEventListener('focusout', (e) => {
+      const el = e.target;
+      if (el && el.dataset) delete el.dataset.tspDidSelect;
+    });
+  }
+
+  function releaseSheetPopupSources() {
+    document.querySelectorAll('input[data-tsp-locked]').forEach((el) => {
+      el.readOnly = false;
+      delete el.dataset.tspLocked;
+    });
+  }
+
+  function lockSheetPopupSources() {
+    document.querySelectorAll('input[data-sheet-popup]').forEach((el) => {
+      el.readOnly = true;
+      el.dataset.tspLocked = '1';
+    });
+  }
+
+  function popupModeTitle(mode, sectionTitle) {
+    if (mode === 'sg') return `${sectionTitle} — SG`;
+    if (mode === 'temp') return `${sectionTitle} — Temp`;
+    return `${sectionTitle} — Actual`;
+  }
+
+  function popupRowHtml(mode, r, fr) {
+    const name = `<div class="tsp-name">${esc(r.name)}</div>`;
+    if (mode === 'sg') {
+      return `<div class="tsp-row" data-tsp-tank="${esc(r.tankId)}">
+        ${name}
+        <label class="tsp-field"><span>SG</span>
+          <input type="text" inputmode="decimal" autocomplete="off" data-tsp="unitValue" value="${esc(fr.unitValue)}"></label>
+      </div>`;
+    }
+    if (mode === 'temp') {
+      return `<div class="tsp-row" data-tsp-tank="${esc(r.tankId)}">
+        ${name}
+        <label class="tsp-field"><span>Temp (°C)</span>
+          <input type="text" inputmode="decimal" autocomplete="off" data-tsp="tempC" value="${esc(fr.tempC)}"></label>
+      </div>`;
+    }
+    return `<div class="tsp-row" data-tsp-tank="${esc(r.tankId)}">
+      ${name}
+      <label class="tsp-field"><span>Actual (cm)</span>
+        <input type="text" inputmode="decimal" autocomplete="off" data-tsp="reading" value="${esc(Core.formatCm(fr.reading, { soundingUnit: r.soundingUnit }))}"></label>
+    </div>`;
+  }
+
+  function openSheetPopup(opts) {
+    const {
+      mode, /* 'actual' | 'sg' | 'temp' */
+      sectionId,
+      focusTankId,
+      formRows,
+      computed,
+      onApply,
+      host,
+    } = opts;
+    closeSheetPopup();
+    const section = (computed.sections || []).find((s) => s.id === sectionId)
+      || { id: sectionId, title: sectionId === 'do' ? 'MO / MGO / LSMGO' : 'HFO / VLSFO', rows: [] };
+    const title = popupModeTitle(mode, section.title);
+    const list = (section.rows || []).map((r) => popupRowHtml(mode, r, formRows[r.tankId] || {})).join('')
+      || `<p class="hint">No tanks in this group.</p>`;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'tankSheetPopup';
+    overlay.className = 'tsp-overlay';
+    overlay.innerHTML = `<div class="tsp-dialog" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+      <div class="tsp-head"><h3>${esc(title)}</h3>
+        <button type="button" class="btn ghost small" data-tsp-cancel>Close</button></div>
+      <div class="tsp-list tsp-mode-${esc(mode)}">${list}</div>
+      <div class="tsp-actions">
+        <button type="button" class="btn" data-tsp-cancel>Cancel</button>
+        <button type="button" class="btn primary" data-tsp-update>Update</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    lockSheetPopupSources();
+    bindPopupSelectAll(overlay);
+
+    const focusSel = mode === 'sg' ? '[data-tsp="unitValue"]'
+      : mode === 'temp' ? '[data-tsp="tempC"]'
+      : '[data-tsp="reading"]';
+    const focusRow = overlay.querySelector(`[data-tsp-tank="${CSS.escape(focusTankId || '')}"]`);
+    const focusInput = focusRow?.querySelector(focusSel) || overlay.querySelector('input');
+    const keepInside = (e) => {
+      const pop = document.getElementById('tankSheetPopup');
+      if (!pop || pop !== overlay) {
+        document.removeEventListener('focusin', keepInside, true);
+        return;
+      }
+      if (pop.contains(e.target)) return;
+      if (e.target && e.target.closest && e.target.closest('.tms-signed-accessory')) return;
+      const back = focusInput && overlay.contains(focusInput)
+        ? focusInput
+        : overlay.querySelector('input, textarea');
+      if (back) {
+        e.stopPropagation();
+        try { back.focus(); } catch (_) { /* ignore */ }
+      }
+    };
+    document.addEventListener('focusin', keepInside, true);
+    setTimeout(() => {
+      if (!document.body.contains(overlay)) return;
+      try { focusInput?.focus(); } catch (_) { /* ignore */ }
+    }, 40);
+
+    const dismiss = () => closeSheetPopup();
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(); });
+    overlay.querySelectorAll('[data-tsp-cancel]').forEach((b) => { b.onclick = dismiss; });
+    overlay.querySelector('[data-tsp-update]').onclick = () => {
+      overlay.querySelectorAll('[data-tsp-tank]').forEach((rowEl) => {
+        const id = rowEl.dataset.tspTank;
+        const fr = formRows[id];
+        if (!fr) return;
+        if (mode === 'sg') {
+          fr.unitValue = rowEl.querySelector('[data-tsp="unitValue"]')?.value ?? '';
+          fr.unit = 'den15';
+        } else if (mode === 'temp') {
+          fr.tempC = rowEl.querySelector('[data-tsp="tempC"]')?.value ?? '';
+        } else {
+          fr.reading = Core.cmToMm(rowEl.querySelector('[data-tsp="reading"]')?.value, {
+            soundingUnit: (view.computed?.sections || [])
+              .flatMap((s) => s.rows).find((x) => x.tankId === id)?.soundingUnit || 'mm',
+          });
+          fr.unit = 'den15';
+        }
+        if (host) {
+          if (mode === 'sg') {
+            const uv = host.querySelector(`input[data-row="${CSS.escape(id)}"][data-field="unitValue"]`);
+            if (uv) uv.value = fr.unitValue ?? '';
+          } else if (mode === 'temp') {
+            const tp = host.querySelector(`input[data-row="${CSS.escape(id)}"][data-field="tempC"]`);
+            if (tp) tp.value = fr.tempC ?? '';
+          } else {
+            const rd = host.querySelector(`input[data-row="${CSS.escape(id)}"][data-field="reading"]`);
+            const unitHint = {
+              soundingUnit: (view.computed?.sections || [])
+                .flatMap((s) => s.rows).find((x) => x.tankId === id)?.soundingUnit || 'mm',
+            };
+            if (rd) rd.value = Core.formatCm(fr.reading, unitHint);
+          }
+        }
+      });
+      dismiss();
+      if (typeof onApply === 'function') onApply();
+    };
+  }
+
+  function bindSheetPopups(wrap, getFormRows, getComputed, onApply) {
+    wrap.addEventListener('focusin', (e) => {
+      const el = e.target;
+      if (!el || !el.dataset || !el.dataset.sheetPopup) return;
+      if (!sheetPopupWanted()) return;
+      /* Another input dialog is already up (this sheet popup, double
+         interpolation, or the ship clock). Rebuilding it on every focus
+         bounce is what froze the page. */
+      const openPopup = document.getElementById('tankSheetPopup');
+      if (openPopup || _sheetPopupLock || document.querySelector('.tsp-overlay, .ccp-overlay')) {
+        try { el.blur(); } catch (_) { /* ignore */ }
+        const back = openPopup && (openPopup.querySelector('input, textarea'));
+        if (back) { try { back.focus(); } catch (_) { /* ignore */ } }
+        return;
+      }
+      const fieldMode = el.dataset.sheetPopup; /* actual | sg | temp */
+      const tankId = el.dataset.row;
+      const sectionEl = el.closest('[data-section]');
+      const sectionId = sectionEl?.dataset.section || 'fuel';
+      e.preventDefault();
+      try { el.blur(); } catch (_) { /* ignore */ }
+      const mode = fieldMode === 'sg' ? 'sg' : fieldMode === 'temp' ? 'temp' : 'actual';
+      _sheetPopupLock = true;
+      try {
+        openSheetPopup({
+          mode,
+          sectionId,
+          focusTankId: tankId,
+          formRows: getFormRows(),
+          computed: getComputed(),
+          onApply,
+          host: wrap,
+        });
+      } finally {
+        _sheetPopupLock = false;
+      }
+    });
+  }
+
+
+  return {
+    render,
+    flushIfDirty,
+    flushDraft,
+    bunkerNavHtml,
+    bindBunkerNav,
+    printReport,
+    buildPrintPages,
+    recompute,
+    view,
+    // Reused by the bunkering screens so both sheets look and behave the same.
+    printHtml,
+    printSignatureBlock,
+    withLiveSigner,
+    signatureFor,
+    signatureKey,
+    vesselChiefEngineer,
+    vesselAssets,
+    overlayAioIdentity,
+    applyAioIdentity,
+    aioPrintIdentity,
+    sheetTableHtml: renderSectionPanel,
+    bindSheetPopups,
+    openSheetPopup,
+    sheetPopupWanted,
+    sectionWouldChange,
+    SECTION_SHORT,
+    bindSectionMove,
+    moveControlHtml,
+    paintSectionCells,
+    setCell,
+    COMPUTED_COLUMNS,
+    CELL_FORMAT,
+    printSectionTable,
+    printConditionSection,
+    printMasthead,
+    printConditionPage,
+    snapshotDrift,
+    warnIfDrifted,
+    masthead,
+    footer,
+    metaGrid,
+    esc,
+    n,
+    pct,
+    signed,
+    nowStamp,
+  };
+})();
+
+window.FuelReport = FuelReport;

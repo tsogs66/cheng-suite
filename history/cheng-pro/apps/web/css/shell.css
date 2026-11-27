@@ -1,0 +1,2400 @@
+/* ChEng AIO shell — Voyage Chief palette + bright mode */
+:root {
+  --ink: #0a1420;
+  --bg0: #0a1420;
+  --bg1: #122238;
+  --bg2: #0e1c30;
+  --panel: rgba(18, 34, 56, 0.92);
+  --panel-solid: #122238;
+  --line: rgba(233, 228, 214, 0.14);
+  --line-strong: rgba(233, 228, 214, 0.28);
+  --text: #e9e4d6;
+  --muted: #a9a292;
+  --paper: #e9e4d6;
+  --paper-dim: #a9a292;
+  --accent: #57b3ab;
+  --accent-2: #c99a53;
+  --brass: #c99a53;
+  --brass-dim: #8a6b3c;
+  --teal: #57b3ab;
+  --danger: #e06a4c;
+  --ok: #5f9e6e;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  --radius: 12px;
+  --font: "Segoe UI", "Helvetica Neue", "Noto Sans", sans-serif;
+  --display: "Oswald", "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", "Consolas", monospace;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --topbar-h: 72px;
+  --bottom-h: 0px;
+  /* Bottom navigation — keep in step with Voyage Chief / Tank Chief. */
+  --nav-bg: rgba(10, 20, 32, 0.98);
+  --nav-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+  --nav-item-bg: rgba(0, 0, 0, 0.18);
+  --nav-active-bg: rgba(201, 154, 83, 0.12);
+  color-scheme: dark;
+}
+html.bright {
+  --ink: #f4f1ea;
+  --bg0: #efebe3;
+  --bg1: #f7f5ef;
+  --bg2: #ffffff;
+  --panel: rgba(255, 255, 255, 0.94);
+  --panel-solid: #ffffff;
+  --line: rgba(18, 34, 56, 0.12);
+  --line-strong: rgba(18, 34, 56, 0.28);
+  --text: #122238;
+  --muted: #3d4a5c;
+  --paper: #122238;
+  --paper-dim: #3d4a5c;
+  --accent: #17665f;
+  --accent-2: #6e4814;
+  --brass: #6e4814;
+  --brass-dim: #8a5a1a;
+  --teal: #17665f;
+  --danger: #b33a22;
+  --ok: #2f7a45;
+  --shadow: 0 12px 36px rgba(18, 34, 56, 0.12);
+  --nav-bg: rgba(255, 255, 255, 0.98);
+  --nav-shadow: 0 -8px 24px rgba(18, 34, 56, 0.14);
+  --nav-item-bg: rgba(18, 34, 56, 0.04);
+  --nav-active-bg: rgba(138, 90, 26, 0.14);
+  color-scheme: light;
+}
+
+/* Prism — nautical emerald prism / brass refraction (design option 3) */
+html.prism {
+  --ink: #041618;
+  --bg0: #041618;
+  --bg1: #0a2c30;
+  --bg2: #061820;
+  --panel: rgba(8, 36, 40, 0.9);
+  --panel-solid: #0a2c30;
+  --line: rgba(120, 240, 220, 0.18);
+  --line-strong: rgba(120, 240, 220, 0.32);
+  --text: #e6fff8;
+  --muted: #7eb8ae;
+  --paper: #e6fff8;
+  --paper-dim: #7eb8ae;
+  --accent: #2fd4b8;
+  --accent-2: #e8c070;
+  --brass: #e8c070;
+  --brass-dim: #9a7a38;
+  --teal: #2fd4b8;
+  --danger: #e0705c;
+  --ok: #4cb88a;
+  --shadow: 0 18px 44px rgba(0, 20, 24, 0.5);
+  color-scheme: dark;
+}
+html.prism body,
+html.prism {
+  background:
+    conic-gradient(from 210deg at 85% 15%, rgba(47, 212, 184, 0.15), transparent 40%, rgba(232, 192, 112, 0.1), transparent 70%),
+    linear-gradient(170deg, #041618 0%, #0a2c30 48%, #061820 100%);
+}
+html.prism .btn,
+html.prism .form-panel,
+html.prism .panel {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 8px;
+}
+
+/* Astrolabe — chart-ink indigo / copper engraving (design option 10) */
+html.astrolabe {
+  --ink: #0a0c16;
+  --bg0: #0a0c16;
+  --bg1: #161a2e;
+  --bg2: #101428;
+  --panel: rgba(16, 20, 36, 0.92);
+  --panel-solid: #14182c;
+  --line: rgba(200, 170, 120, 0.18);
+  --line-strong: rgba(200, 170, 120, 0.32);
+  --text: #f4efe4;
+  --muted: #a89a82;
+  --paper: #f4efe4;
+  --paper-dim: #a89a82;
+  --accent: #6ab0c8;
+  --accent-2: #c9985a;
+  --brass: #c9985a;
+  --brass-dim: #8a6a3a;
+  --teal: #6ab0c8;
+  --danger: #e0705c;
+  --ok: #5f9e6e;
+  --shadow: 0 18px 46px rgba(4, 6, 16, 0.5);
+  color-scheme: dark;
+}
+html.astrolabe body,
+html.astrolabe {
+  background:
+    radial-gradient(circle at 70% 20%, rgba(201, 152, 90, 0.14), transparent 42%),
+    radial-gradient(circle at 20% 80%, rgba(106, 176, 200, 0.12), transparent 45%),
+    linear-gradient(160deg, #0a0c16 0%, #12162a 50%, #080a12 100%);
+}
+html.astrolabe .btn,
+html.astrolabe .form-panel,
+html.astrolabe .panel {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 7px;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; min-height: 100%;
+  background: radial-gradient(1200px 600px at 15% -10%, #16283f 0%, transparent 60%), var(--ink);
+  color: var(--text); font-family: var(--font);
+}
+html.bright body {
+  background: linear-gradient(180deg, #efebe3 0%, #f7f5ef 40%, #ffffff 100%);
+}
+body { min-height: 100dvh; }
+button, input, select, textarea { font: inherit; color: inherit; }
+.app { min-height: 100dvh; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  display: grid; grid-template-columns: auto minmax(0,1fr) auto;
+  gap: 12px; align-items: start;
+  min-height: calc(var(--topbar-h) + var(--safe-top));
+  padding: calc(10px + var(--safe-top)) 16px 10px;
+  background: rgba(10, 20, 32, 0.88);
+  backdrop-filter: blur(14px);
+  border-bottom: 2px solid var(--brass-dim);
+}
+html.bright .topbar { background: rgba(255,255,255,0.92); }
+.watch-strip {
+  display: flex; flex-wrap: wrap; gap: 6px 16px;
+  padding: 6px 16px 8px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.2);
+  font-family: var(--mono); font-size: 12px; line-height: 1.35;
+}
+html.bright .watch-strip { background: rgba(18, 34, 56, 0.04); }
+.ws-item { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+.ws-k {
+  font-family: var(--display); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+.ws-v b { font-weight: 800; }
+.ws-warn .ws-v { color: var(--danger); }
+.bunker-file-bar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 8px 12px; border-bottom: 1px solid var(--line);
+}
+.bunker-file-bar span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+@media (max-width: 720px) and (orientation: portrait) {
+  .watch-strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    font-size: 13px;
+    padding: 8px 10px;
+    align-items: start;
+  }
+  .ws-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+  .ws-item:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .ws-v { font-size: 14px; line-height: 1.3; }
+}
+@media (min-width: 721px) and (max-width: 1100px) and (orientation: portrait) {
+  .watch-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 14px;
+    align-items: start;
+  }
+  .ws-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+}
+/* Phone landscape and tablet: five equal watch columns, and action
+   buttons that share a row instead of sizing to their labels. */
+@media (pointer: coarse) and (min-width: 701px) {
+  .watch-strip {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px 10px;
+    align-items: start;
+  }
+  .ws-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+  }
+  .ws-v { font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; }
+  .toggle-row button {
+    flex: 1 1 0;
+    max-width: 240px;
+    min-width: 0;
+    justify-content: center;
+    text-align: center;
+  }
+}
+@media print { .watch-strip, .bunker-file-bar { display: none !important; } }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; }
+.brand:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 8px; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 10px; flex: 0 0 auto;
+  /* Swapped with Voyage Chief mark — uses former Voyage logoBG art. */
+  background: #0f172a url('../icons/brand-mark.png') center / cover no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+}
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.brand-text strong {
+  font-family: var(--display); font-size: 1.15rem; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+.brand-text > span { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.vessel-switcher { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vessel-switcher-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vessel-switcher-row select { flex: 1 1 auto; min-width: 0; max-width: none; }
+.vessel-switcher-row .btn { flex: 0 0 auto; white-space: nowrap; }
+.vessel-load-frame {
+  position: absolute; width: 1px; height: 1px; left: -10000px; top: 0;
+  border: 0; opacity: 0; pointer-events: none;
+}
+.vessel-switcher label {
+  font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.vessel-switcher select, .field input, .field select, .field textarea {
+  width: 100%; min-width: 160px; max-width: 360px;
+  background: rgba(0,0,0,0.22); border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 8px 10px; outline: none; color: var(--text); color-scheme: inherit;
+}
+html.bright .vessel-switcher select,
+html.bright .field input,
+html.bright .field select,
+html.bright .field textarea { background: rgba(18,34,56,0.05); }
+.vessel-switcher select option, .field select option { background-color: var(--bg2); color: var(--text); }
+.vessel-switcher select:focus, .field input:focus, .field select:focus, .field textarea:focus {
+  border-color: var(--brass); box-shadow: 0 0 0 3px rgba(201,154,83,0.18);
+}
+::placeholder { color: var(--muted); opacity: 0.85; }
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  min-width: 0;
+  justify-self: end;
+}
+.topbar-id {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.2;
+}
+.topbar-meta .registered {
+  min-width: 0;
+  max-width: 28vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.topbar-meta .ver {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.topbar-meta .registered:empty,
+.topbar-meta .ver:empty { display: none; }
+/* "registered:" only where there is room; on a phone the whole address is worth more than the word. */
+@media (max-width: 699px) { .topbar-meta .registered { max-width: 46vw; } }
+
+/* Live sync panel (Backup & Sync): fields a finger can hit, and text that is not smaller than the page around it. */
+#bk-live-sync input[type="text"], #bk-live-sync input:not([type]) { min-height: 44px; font-size: 15px; padding: 8px 10px; box-sizing: border-box; }
+#bk-live-sync .hint { font-size: 0.9rem; line-height: 1.5; }
+/* Explanatory text on Backup & Sync was 12px: under the 14px Android asks for body text. Phones and tablets only. */
+@media (max-width: 1024px) and (pointer: coarse) {
+  .backup-page .hint, #bk-live-sync .hint { font-size: 14px !important; line-height: 1.5; }
+}
+#bk-live-sync .btn.small { min-height: 40px; min-width: 40px; }
+.topbar-id:not(:has(:not(:empty))) { display: none; }
+.topbar-meta .theme-topbar { flex: 0 0 auto; }
+.app-version { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.theme-toggle, .btn.theme-toggle {
+  border: 1px solid var(--line-strong); background: rgba(0,0,0,0.18); color: var(--brass);
+  border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; white-space: nowrap;
+}
+html.bright .theme-toggle { background: rgba(18,34,56,0.06); }
+.theme-toggle:hover { border-color: var(--brass); color: var(--text); }
+/* Fixed phone FAB removed — theme lives on home topbar or beside Dashboard. */
+.theme-fab {
+  display: none !important;
+}
+.health-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); display: inline-block; flex-shrink: 0; }
+.health-dot.ok { background: var(--ok); box-shadow: 0 0 0 4px rgba(95,158,110,0.18); }
+.health-dot.bad { background: var(--danger); }
+.body { flex: 1; display: grid; grid-template-columns: 220px 1fr; min-height: 0; }
+.sidebar {
+  border-right: 1px solid var(--line); background: rgba(8,18,30,0.55);
+  padding: 18px 12px; display: flex; flex-direction: column; gap: 16px;
+}
+html.bright .sidebar { background: rgba(255,255,255,0.7); }
+
+/* Windows / desktop: pin the AIO menu in the viewport.
+   Only the main pane scrolls — the sidebar must never scroll away or grow a
+   scrollbar of its own. */
+@media (min-width: 901px) {
+  html:not(.aio-android-nav):not(.use-bottom-nav):not(.aio-fullscreen-embed),
+  html:not(.aio-android-nav):not(.use-bottom-nav):not(.aio-fullscreen-embed) body {
+    height: 100%;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+  html:not(.aio-android-nav):not(.use-bottom-nav):not(.aio-fullscreen-embed) .app {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+  html:not(.aio-android-nav):not(.use-bottom-nav):not(.aio-fullscreen-embed) .body {
+    min-height: 0;
+    overflow: hidden;
+    align-items: stretch;
+  }
+  html:not(.aio-android-nav):not(.use-bottom-nav):not(.aio-fullscreen-embed) .sidebar {
+    position: sticky;
+    top: 0;
+    align-self: stretch;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  html:not(.aio-android-nav):not(.use-bottom-nav):not(.aio-fullscreen-embed) .sidebar .nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    /* Never hide menu entries: when the window is too short for all of them the menu scrolls, with a visible bar. */
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  html:not(.aio-android-nav):not(.use-bottom-nav):not(.aio-fullscreen-embed) .sidebar-meta {
+    flex-shrink: 0;
+  }
+  html:not(.aio-android-nav):not(.use-bottom-nav):not(.aio-fullscreen-embed) .main {
+    min-height: 0;
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+.nav { display: flex; flex-direction: column; gap: 6px; }
+/* A long license value wraps instead of being cut at the box edge. */
+.lic-wrap { width: 100%; resize: none; line-height: 1.4; }
+/* Short windows: the menu keeps all 14 entries on screen by tightening them (a Windows laptop at 125-150% display
+   scaling gives a window of only 560-760 CSS pixels). The selectors are written out in full so they win over the
+   plain .nav-item / .sidebar-meta rules that follow; a very short window scrolls the menu rather than hiding entries. */
+@media (min-width: 901px) and (max-height: 960px) {
+  aside.sidebar .nav { gap: 3px; }
+  aside.sidebar .nav-item { padding: 8px 14px; }
+  aside.sidebar { gap: 10px; padding-top: 12px; padding-bottom: 12px; }
+}
+@media (min-width: 901px) and (max-height: 820px) {
+  aside.sidebar .nav { gap: 2px; }
+  aside.sidebar .nav-item { padding: 5px 12px; font-size: 0.92rem; }
+  aside.sidebar { gap: 6px; padding-top: 8px; padding-bottom: 8px; }
+  aside.sidebar .sidebar-meta { padding-top: 6px; padding-bottom: 6px; }
+}
+@media (min-width: 901px) and (max-height: 640px) {
+  aside.sidebar .nav-item { padding: 3px 12px; font-size: 0.88rem; }
+  aside.sidebar .sidebar-meta .registered { display: none; }
+}
+
+.nav-item, .bottom-item, .btn, .icon-btn { border: 1px solid transparent; background: transparent; cursor: pointer; }
+.nav-item { text-align: left; padding: 12px 14px; border-radius: 12px; color: var(--muted); }
+.nav-item:hover, .bottom-item:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+html.bright .nav-item:hover, html.bright .bottom-item:hover { background: rgba(18,34,56,0.06); }
+.nav-item.active {
+  color: var(--brass); background: rgba(201,154,83,0.12); border-color: rgba(201,154,83,0.28);
+}
+html.bright .nav-item.active { background: rgba(138,90,26,0.12); }
+.sidebar-note { margin-top: auto; font-size: 0.72rem; color: var(--muted); line-height: 1.45; padding: 0 8px; }
+.sidebar-meta {
+  margin-top: auto;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.sidebar-meta .ver { font-family: var(--mono); color: var(--text); font-weight: 600; }
+.sidebar-meta .author { font-family: var(--mono); color: var(--muted); word-break: break-word; margin-top: 2px; }
+.sidebar-meta .registered {
+  font-family: var(--mono); color: var(--muted); word-break: break-word; margin-top: 2px; font-size: 0.7rem;
+}
+.sidebar-meta .author:empty, .sidebar-meta .ver:empty, .sidebar-meta .registered:empty { display: none; }
+
+/* Theme, registered email, and version live in the top bar now. */
+.sidebar-meta .theme-sidebar,
+.sidebar-meta .ver,
+.sidebar-meta .registered {
+  display: none;
+}
+.main { padding: 20px 18px 32px; min-width: 0; }
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 18px 18px 16px; box-shadow: var(--shadow); margin-bottom: 16px; color: var(--text);
+}
+.panel.hero h1 {
+  font-family: var(--display); text-transform: uppercase; letter-spacing: 0.04em;
+  font-size: 1.55rem; margin: 0 0 8px; color: var(--text);
+}
+.panel.hero p, .hint, .empty, .section-head p, .subhead { color: var(--muted); }
+.section-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.section-head h2 { margin: 0; font-size: 1.05rem; color: var(--text); }
+.subhead { margin: 18px 0 8px; font-size: 0.95rem; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.field label {
+  display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); margin-bottom: 4px;
+}
+.field input, .field select, .field textarea { min-width: 0; max-width: none; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.btn {
+  padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line-strong);
+  background: rgba(0,0,0,0.18); color: var(--text);
+}
+html.bright .btn { background: rgba(18,34,56,0.05); color: var(--text); }
+.btn:hover { border-color: var(--brass); color: var(--brass); }
+.btn.primary { background: var(--brass); border-color: var(--brass); color: #0a1420; font-weight: 700; }
+/* Keep the brass fill in bright mode — html.bright .btn alone was washing it out
+   and leaving cream text on cream, which made Open Voyage / Tank unreadable. */
+html.bright .btn.primary {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: #ffffff;
+}
+html.bright .btn.primary:hover {
+  color: #ffffff;
+  filter: brightness(1.08);
+}
+.btn.danger { border-color: rgba(224,106,76,0.5); color: var(--danger); }
+
+/*
+ * Theme sits at the top-right of the title header. Sidebar / phone-home
+ * copies would duplicate it, so they stay off while the header is visible.
+ */
+.theme-topbar {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+html.aio-fullscreen-embed .theme-topbar { display: none !important; }
+.sidebar-meta .theme-sidebar { display: none; }
+.nav-fab {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(201,154,83,0.45);
+  background: rgba(0,0,0,0.18);
+  color: var(--brass, #c99a53);
+  font-size: 1.15rem;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+html.bright .nav-fab { background: rgba(18,34,56,0.06); color: #8a5a1a; }
+.nav-fab:hover { border-color: var(--brass); color: var(--text); }
+
+html.aio-android-nav:not(.use-bottom-nav) .nav-fab:not([hidden]) { display: inline-flex; }
+html.aio-android-nav .nav-fab.is-drawer-open,
+html.aio-nav-open .nav-fab,
+html.use-bottom-nav .nav-fab { display: none !important; }
+html.aio-android-nav .menu-btn,
+html.use-bottom-nav .menu-btn { display: none !important; }
+html.aio-android-nav .theme-fab { display: none !important; }
+html.aio-android-nav:not(.use-bottom-nav) .bottom-nav { display: none !important; }
+html.aio-android-nav:not(.use-bottom-nav) {
+  --bottom-h: 0px;
+}
+html.aio-android-nav .body {
+  grid-template-columns: 1fr;
+}
+html.aio-android-nav .sidebar {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(300px, 86vw);
+  z-index: 55;
+  transform: translateX(105%);
+  transition: transform 0.2s ease;
+  padding-bottom: calc(24px + var(--safe-bottom, env(safe-area-inset-bottom, 0px)));
+  background: rgba(8,18,30,0.97);
+  box-shadow: -8px 0 28px rgba(0,0,0,0.45);
+}
+html.bright.aio-android-nav .sidebar { background: rgba(255,255,255,0.98); }
+html.aio-android-nav .sidebar.open { transform: translateX(0); }
+html.aio-android-nav .sidebar-backdrop:not([hidden]) {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: rgba(4,10,18,0.55);
+  z-index: 50;
+}
+html.aio-fullscreen-embed.aio-android-nav .nav-fab,
+html.aio-fullscreen-embed .theme-topbar { display: none !important; }
+
+.icon-btn, .menu-btn {
+  width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line);
+  color: var(--text); display: none; align-items: center; justify-content: center;
+}
+@media (min-width: 901px) {
+  .menu-btn { display: none !important; }
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted); font-size: 0.78rem;
+}
+.chip.on { color: var(--ok); border-color: rgba(95,158,110,0.4); }
+.table-wrap { overflow-x: auto; }
+table.data { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.data th, table.data td {
+  text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); color: var(--text);
+}
+table.data th { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.toast {
+  position: fixed; left: 50%; bottom: calc(18px + var(--bottom-h) + var(--safe-bottom)); transform: translateX(-50%);
+  background: #122238; color: #fff8ee; border: 1px solid rgba(201, 154, 83, 0.4);
+  border-radius: 999px; padding: 10px 16px; z-index: 80; box-shadow: var(--shadow);
+  max-width: min(92vw, 420px);
+}
+/* Bright: keep a solid dark chip — panel-solid + --text washes out on cream. */
+html.bright .toast {
+  background: #122238;
+  color: #fff8ee;
+  border-color: rgba(138, 90, 26, 0.45);
+  box-shadow: 0 14px 36px rgba(18, 34, 56, 0.22);
+}
+.bottom-nav, .bn-more-sheet { display: none; }
+.sidebar-backdrop { display: none; }
+
+/* Tablet + phone (portrait and landscape): 6 programs + More, same as Voyage/Tank. */
+html.use-bottom-nav {
+  /* What the page has to keep clear: the items, the bar's own padding, and
+     a little air. Derived so the tablet's taller bar does not sit over the
+     last row of the page. */
+  --bottom-h: calc(var(--nav-item-h) + (var(--nav-pad-y) * 2) + 4px);
+}
+html.use-bottom-nav .body { grid-template-columns: 1fr; }
+html.use-bottom-nav .sidebar,
+html.use-bottom-nav .sidebar-backdrop { display: none !important; }
+html.use-bottom-nav .bottom-nav {
+  /* Flex, as Voyage Chief's bar is: the items share the width evenly without
+     the count being written into the CSS, so adding or dropping a module does
+     not leave an empty slot behind. */
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: 1px;
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 40;
+  height: auto;
+  min-height: calc(var(--bottom-h) + var(--safe-bottom));
+  padding: var(--nav-pad-y) 2px calc(var(--nav-pad-y) + var(--safe-bottom));
+  background: var(--nav-bg, rgba(10,20,32,0.97));
+  border-top: 1px solid var(--line);
+  box-shadow: var(--nav-shadow, 0 -8px 24px rgba(0,0,0,0.35));
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+html.bright.use-bottom-nav .bottom-nav { background: var(--nav-bg, rgba(255,255,255,0.97)); }
+html.use-bottom-nav .bottom-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--nav-item-h);
+  padding: 4px 1px 3px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-family: var(--display);
+  font-size: var(--nav-label);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  text-transform: uppercase;
+  -webkit-tap-highlight-color: transparent;
+}
+html.use-bottom-nav .bottom-item .bn-ic { font-size: var(--nav-ic); line-height: 1; }
+/* ---- Tablets ------------------------------------------------------------------------------ */
+/* Held sideways (900px and wider, 560px or more on the short side) the bar runs down the left edge. */
+html.tablet-rail.use-bottom-nav .bottom-nav {
+  top: 0; bottom: 0; left: 0; right: auto; width: 84px; height: auto; min-height: 0;
+  flex-direction: column; justify-content: stretch; gap: 0;
+  padding: 8px 4px calc(8px + var(--safe-bottom, 0px));
+  border-top: 0; border-right: 1px solid var(--line); box-shadow: none; overflow-y: auto;
+}
+html.tablet-rail.use-bottom-nav .bottom-item { flex: 1 1 0; width: 100%; min-height: 64px; max-height: none; }
+html.tablet-rail.use-bottom-nav .app { padding-left: calc(84px + env(safe-area-inset-left, 0px)); }
+html.tablet-rail.use-bottom-nav .main { padding-bottom: 24px; }
+html.tablet-rail.use-bottom-nav .toast { bottom: 18px; }
+html.tablet-rail:not(.aio-fullscreen-embed) .main > *:not(.aio-embed-wrap):not(.eorb-embed-wrap):not(:has(.aio-embed-wrap)):not(:has(.eorb-embed-wrap)) { max-width: none; margin-inline: 0; }
+/* a module frame always takes the whole pane, whatever wraps it */
+html.aio-fullscreen-embed .main > *, html.aio-fullscreen-embed .aio-embed-wrap, html.aio-fullscreen-embed .eorb-embed-wrap { max-width: none; margin-inline: 0; align-self: stretch; }
+/* Touch screens: every button is a comfortable target. */
+@media (pointer: coarse) {
+  .btn, button.small, button.ghost { min-height: 44px; }
+}
+/* A notice can be dismissed with a tap, so a long one does not sit over the page. */
+.toast { cursor: pointer; }
+
+/* Same press feedback as Voyage Chief's bar: colour eases in, the item dips
+   under the finger. */
+html.use-bottom-nav .bottom-item:hover { color: var(--text); background: transparent; }
+html.use-bottom-nav .bottom-item.active {
+  color: var(--brass);
+  background: var(--nav-active-bg, rgba(201,154,83,0.12));
+}
+html.use-bottom-nav .bottom-item.active:hover { color: var(--brass); }
+html.use-bottom-nav .bottom-item:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+html.use-bottom-nav .main {
+  padding: 16px 14px calc(24px + var(--bottom-h) + var(--safe-bottom));
+}
+html.use-bottom-nav .bn-more-sheet {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(4,10,18,0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+html.use-bottom-nav .bn-more-sheet.open { display: block; }
+html.use-bottom-nav .bn-more-panel {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 12px 10px calc(70px + var(--safe-bottom));
+  background: rgba(8,18,30,0.98);
+  border-top: 1px solid var(--line);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -8px 28px rgba(0,0,0,.35);
+  max-height: min(70vh, 480px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+html.bright.use-bottom-nav .bn-more-panel { background: rgba(255,255,255,0.98); }
+html.use-bottom-nav .bn-more-handle {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--line); margin: 0 auto 12px;
+}
+html.use-bottom-nav .bn-more-title {
+  font-family: var(--display);
+  font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--brass); margin: 0 0 10px; text-align: center;
+}
+html.use-bottom-nav .bn-more-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+html.use-bottom-nav .bn-more-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 8px;
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(22, 40, 63, 0.9);
+  color: var(--muted);
+  font-family: var(--display);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+html.bright.use-bottom-nav .bn-more-item { background: rgba(18,34,56,0.06); }
+html.use-bottom-nav .bn-more-item .bn-ic { font-size: 24px; line-height: 1; }
+html.use-bottom-nav .bn-more-item > span:last-child {
+  min-width: 0;
+  max-width: 100%;
+  text-align: center;
+  line-height: 1.15;
+}
+html.use-bottom-nav .bn-more-item.active {
+  color: var(--brass);
+  border-color: var(--brass);
+  background: var(--nav-active-bg, rgba(201,154,83,0.14));
+}
+html.use-bottom-nav .bn-more-item:hover { color: var(--text); }
+html.use-bottom-nav .bn-more-item.active:hover { color: var(--brass); }
+@media (max-width: 420px) {
+  html.use-bottom-nav .bn-more-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .topbar { grid-template-columns: auto minmax(0,1fr) auto; }
+  .brand { grid-column: 2; grid-row: 1; min-width: 0; }
+  .topbar-meta { grid-column: 3; grid-row: 1; justify-self: end; }
+  .vessel-switcher { grid-column: 1 / -1; grid-row: 2; }
+  .vessel-switcher select { max-width: none; }
+  .vessel-switcher-row { flex-wrap: wrap; }
+  .vessel-switcher-row .btn { width: 100%; }
+  .body { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed; inset: 0 auto 0 0; width: min(280px, 86vw); z-index: 50;
+    transform: translateX(-105%); transition: transform 0.2s ease;
+    padding-bottom: calc(24px + var(--safe-bottom));
+  }
+  .sidebar.open { transform: translateX(0); }
+  /* Only show when sidebar is open — plain display:block overrides the hidden attribute and blocks all taps */
+  .sidebar-backdrop:not([hidden]) {
+    display: block; position: fixed; inset: 0; background: rgba(4,10,18,0.55); z-index: 45;
+  }
+  html:not(.use-bottom-nav) .menu-btn { display: inline-flex; }
+  .main {
+    padding: 16px 14px calc(24px + var(--bottom-h) + var(--safe-bottom));
+  }
+  .grid-2 { grid-template-columns: 1fr; }
+  .brand-text strong { font-size: 1rem; }
+  .brand-text > span { display: none; } /* save topbar height on phone */
+  .app-version { display: none; }
+  .theme-topbar {
+    display: inline-flex;
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  .theme-fab { display: none !important; }
+  html:not(.use-bottom-nav) { --bottom-h: 56px; }
+  .home-hero h1 { font-size: 1.55rem; }
+  .home-lead { font-size: 0.95rem; }
+  .panel { padding: 14px; }
+}
+
+/* Tablet landscape — keep sidebar usable, tighten chrome */
+@media (min-width: 901px) and (max-width: 1180px) and (orientation: landscape) {
+  .sidebar { width: 200px; }
+  .brand-text strong { font-size: 1rem; }
+  .grid-2 { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .panel { padding: 14px; }
+}
+
+/* Phone landscape — compact chrome, still one-row 6+More bottom nav */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 480px) {
+  .topbar { padding-top: 6px; padding-bottom: 6px; }
+  html.use-bottom-nav .bottom-item { min-height: 48px; font-size: 11px; letter-spacing: 0.02em; }
+  html.use-bottom-nav { --bottom-h: 56px; }
+}
+
+/* Nav warning when program not on AIO key */
+.nav-item.nav-warn, .bottom-item.nav-warn {
+  color: var(--danger);
+  opacity: 0.92;
+}
+.nav-item.nav-warn::after, .bottom-item.nav-warn::after {
+  content: "!";
+  margin-left: 4px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+/* Home — product-style composition */
+.home-hero h1 {
+  font-family: var(--display);
+  font-size: clamp(1.75rem, 4vw, 2.4rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+  color: var(--brass);
+}
+.home-kicker {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+.home-lead, .home-copy, .home-aside {
+  margin: 0;
+  max-width: 40rem;
+  line-height: 1.55;
+  color: var(--muted);
+  font-size: 1.02rem;
+}
+.home-aside { margin-top: 12px; font-size: 0.92rem; }
+.home-vessel-line {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+.home-vessel-line span { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.home-vessel-line strong { font-size: 1.15rem; color: var(--text); }
+.home-vessel-line em { font-style: normal; font-family: var(--mono); font-size: 0.9rem; color: var(--teal); }
+.home-section h2 {
+  font-family: var(--display);
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass);
+  margin: 0 0 14px;
+}
+.home-feature-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 22px;
+}
+.home-feature-list article h3 {
+  margin: 0 0 6px;
+  font-family: var(--display);
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.home-feature-list article p { margin: 0 0 12px; color: var(--muted); line-height: 1.5; font-size: 0.95rem; }
+.home-warn {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--danger);
+  background: rgba(224, 106, 76, 0.1);
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.home-meta { margin: 14px 0 0; font-size: 0.78rem; color: var(--muted); font-family: var(--mono); }
+@media (max-width: 900px) {
+  .home-feature-list { grid-template-columns: 1fr; }
+}
+
+/* Home operational dashboard */
+.vessel-chip {
+  display: inline-flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  padding: 8px 12px; border-radius: 999px; background: rgba(18,34,56,.04); border: 1px solid var(--line);
+  margin-bottom: 14px; font-size: 13px;
+}
+html:not(.bright) .vessel-chip { background: rgba(255,255,255,.04); }
+.vessel-chip span { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; color: var(--muted); }
+.vessel-chip strong { font-size: 15px; color: var(--text); }
+.vessel-chip em { font-style: normal; font-family: var(--mono); color: var(--muted); font-size: 12px; }
+.section-head .sub { font-size: 12px; color: var(--muted); }
+.toggle-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+.toggle-row button {
+  border: 1px solid var(--line-strong, var(--line)); background: transparent; color: var(--text);
+  border-radius: 999px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+}
+.toggle-row button.on { background: var(--brass); color: #fff8ee; border-color: var(--brass); }
+.toggle-row button.home-action {
+  border-color: rgba(201,154,83,0.4); color: var(--brass, #c99a53); font-weight: 600;
+}
+.toggle-row button.home-action:hover { border-color: var(--brass); color: var(--text); }
+.home-tank-actions { margin-top: -2px; margin-bottom: 12px; }
+.home-voyage-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+.home-voyage-strip .stat {
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--brass-dim, var(--brass));
+  border-radius: 0;
+  padding: 0 0 0 10px;
+  min-width: 0;
+}
+html.bright .home-voyage-strip .stat { background: transparent; }
+.home-voyage-strip .stat .num {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  color: var(--text);
+  font-weight: 600;
+  word-break: break-word;
+  line-height: 1.15;
+}
+.home-voyage-strip .stat .lbl {
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 1px;
+}
+@media (max-width: 560px) {
+  .home-voyage-strip { grid-template-columns: 1fr; gap: 10px; }
+}
+.gauge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px 8px; }
+.gauge-box { text-align: center; padding: 8px 2px 2px; }
+.gauge-box svg.analog-gauge { width: 100%; max-width: 170px; height: auto; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.28)); }
+.gauge-value { font-family: var(--mono); font-size: 16px; color: var(--gauge-ink, var(--brass)); font-weight: 600; }
+/* The ink is the tank's pipe hue, which can be a dark brown (1.8:1 on the dark themes): lift it toward white there. */
+html:not(.bright) .gauge-value { color: color-mix(in srgb, var(--gauge-ink, var(--brass)) 62%, #fff); }
+.gauge-value .unit,
+.home-voyage-strip .stat .num .unit,
+.stat .num .unit {
+  font-size: 0.72em;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 0.28em;
+  letter-spacing: 0.02em;
+}
+.gauge-cap { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.gauge-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-top: 2px; font-weight: 600; }
+.cards-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.cards-row .card {
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  background: rgba(18,34,56,.02);
+}
+html:not(.bright) .cards-row .card { background: rgba(255,255,255,.03); }
+.cards-row .card .label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.cards-row .card .value { font-size: 1.25rem; font-weight: 650; color: var(--text); }
+.cards-row .card .unit { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 4px; }
+.cards-row .card .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.cat-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.cat-fuel { background: #c36a39; }
+.cat-diesel { background: #E07A7A; }
+html.bright .cat-fuel { background: #6b3a1f; }
+html.bright .cat-diesel { background: #9A4048; }
+/* Vessel tank overview — Tank Chief graphical style (4-column schematic) */
+.tg-schematic {
+  display: grid;
+  /* Tablet + Windows (portrait & landscape): four side columns. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+  align-items: start;
+}
+.tg-schematic-col {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(18, 34, 56, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+html:not(.bright) .tg-schematic-col { background: rgba(255, 255, 255, 0.03); }
+.tg-schematic-head {
+  font-size: 12px; font-weight: 800; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text);
+}
+.tg-schematic-col-tanks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tg-schematic-col-tanks .tg-card {
+  padding: 6px 6px 5px;
+  gap: 3px;
+  border-radius: 8px;
+}
+.tg-schematic-col-tanks .tg-name {
+  font-size: 11px;
+  min-height: 2em;
+  line-height: 1.2;
+}
+.tg-schematic-col-tanks .tg-pct { font-size: 11px; }
+.tg-schematic-col-tanks .tg-stats {
+  font-size: 11px;
+  gap: 0 6px;
+}
+.tg-schematic-empty {
+  font-size: 12px; color: var(--muted);
+  padding: 12px 8px; text-align: center;
+  border: 1px dashed var(--line); border-radius: 8px;
+}
+.tg-schematic-rearrange .tg-schematic-col-tanks {
+  min-height: 72px;
+}
+.tg-schematic-rearrange .tg-schematic-col.drop-target {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 2px rgba(201, 154, 83, 0.22);
+}
+.tg-schematic-rearrange .tg-card {
+  position: relative;
+  padding-left: 28px;
+}
+.tg-card-grip {
+  position: absolute;
+  left: 2px;
+  top: 4px;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+  padding: 8px 6px;
+  font-size: 16px;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.tg-card.dragging {
+  cursor: grabbing;
+  border-color: var(--brass);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  transform: scale(1.02);
+  z-index: 2;
+}
+.tg-card.dragging .tg-card-grip { cursor: grabbing; }
+body.home-grid-dragging {
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Android / narrow phones: two columns. Tablets stay at four. */
+@media (max-width: 600px) {
+  .tg-schematic { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Phone landscape (short + narrow): two columns. Tablets stay at four. */
+@media (max-height: 430px) and (max-width: 600px) {
+  .tg-schematic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.tg-card {
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 10px 8px;
+  background: var(--panel-solid, var(--panel)); min-width: 0;
+  color: var(--text);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.tg-name {
+  font-size: 11.5px; font-weight: 700; line-height: 1.25;
+  min-height: 2.4em; overflow: hidden; color: var(--text);
+}
+.tg-art { position: relative; }
+.tg-svg { display: block; width: 100%; height: auto; --tg-ink: #93a1b8; }
+.tg-pct {
+  position: absolute; right: 4px; top: 4px;
+  font-size: 13px; font-weight: 800; color: var(--text);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+.tg-void { fill: rgba(255, 255, 255, 0.04); }
+.tg-shell { fill: none; stroke: #8b9ab4; stroke-width: 2.4; stroke-linejoin: round; }
+.tg-safe { stroke: #d98c2b; stroke-width: 1.2; stroke-dasharray: 4 3; opacity: 0.85; }
+.tg-stats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px 8px;
+  font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.tg-chip {
+  font-weight: 700; color: var(--text); font-size: 11px;
+  letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 5px;
+}
+.tg-chip::before {
+  content: ''; width: 9px; height: 9px; border-radius: 2px;
+  background: var(--tg-chip); border: 1px solid rgba(255, 255, 255, 0.35);
+}
+html.bright .tg-card {
+  background: #ffffff;
+  border-color: rgba(18, 34, 56, 0.16);
+  color: #122238;
+}
+html.bright .tg-name { color: #122238; }
+html.bright .tg-pct {
+  color: #122238;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+}
+html.bright .tg-stats { color: #3d4a5c; }
+html.bright .tg-chip { color: #122238; }
+html.bright .tg-void { fill: rgba(18, 34, 56, 0.06); }
+html.bright .tg-shell { stroke: #5a6a80; }
+html.bright .tg-schematic-col {
+  background: #ffffff;
+  border-color: rgba(18, 34, 56, 0.16);
+}
+html.bright .tg-schematic-head { color: #122238; }
+html.bright .tg-schematic-empty {
+  color: #3d4a5c;
+  border-color: rgba(18, 34, 56, 0.16);
+}
+
+@keyframes voyage-wave { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -48; } }
+@keyframes voyage-sea-chop {
+  0%,100% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(-8px) translateY(var(--chop-y, 3px)); }
+}
+@keyframes voyage-ship-bob {
+  0%,100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+.voyage-wave { animation: voyage-wave 5s linear infinite; stroke-dasharray: 24 8; }
+.voyage-sea-local { animation: voyage-sea-chop var(--sea-dur,2.8s) ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.voyage-ship { animation: voyage-ship-bob 3.5s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@media (prefers-reduced-motion: reduce) {
+  .voyage-wave, .voyage-sea-local, .voyage-ship { animation: none !important; }
+}
+@media (max-width: 900px) {
+  .tg-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
+/* Voyage / Tank / e-ORB full embed inside AIO shell — bottom nav stays visible */
+.main:has(.aio-embed-wrap),
+.main:has(.eorb-embed-wrap) {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - var(--topbar-h) - var(--bottom-h) - var(--safe-top) - var(--safe-bottom));
+  padding-bottom: 0;
+}
+@media (max-width: 900px) {
+  .main:has(.aio-embed-wrap),
+  .main:has(.eorb-embed-wrap) {
+    padding-bottom: var(--bottom-h);
+    min-height: calc(100dvh - var(--topbar-h) - var(--safe-top));
+  }
+  .aio-embed-frame,
+  .eorb-embed-frame {
+    min-height: calc(100dvh - var(--topbar-h) - var(--bottom-h) - var(--safe-top) - 8px);
+  }
+}
+.aio-embed-wrap,
+.eorb-embed-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+}
+.aio-embed-frame,
+.eorb-embed-frame {
+  flex: 1;
+  width: 100%;
+  min-height: calc(100dvh - var(--topbar-h) - var(--bottom-h) - 8px);
+  border: 0;
+  background: var(--ink);
+}
+
+/* Full-screen program embed on Android/mobile (portrait + landscape) — hide AIO chrome.
+   Windows desktop also uses fullscreen embeds (see shell.js wantsFullscreenEmbed).
+
+   The AIO used to leave two buttons floating over the module's own header row;
+   inside Tank Chief they landed on top of its toolbar. This is a strip instead:
+   it takes its own 44px, overlaps nothing, and carries the one thing a module
+   cannot tell you — which vessel the suite has active. Module + vessel stay
+   left/center; theme then Dashboard sit together on the right. */
+:root { --embed-bar-h: 44px; }
+
+.aio-return-fabs {
+  display: none;
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 0;
+  right: 0;
+  z-index: 90;
+  height: var(--embed-bar-h);
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: var(--panel-solid, #122238);
+  border-bottom: 1px solid var(--line-strong);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+html.bright .aio-return-fabs { background: #ffffff; }
+
+.aio-embed-module {
+  font-family: var(--display);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent, var(--teal));
+  white-space: nowrap;
+}
+/* The vessel takes the slack, and is the first thing to go when there is none. */
+.aio-embed-vessel {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aio-home-fab,
+.aio-return-fabs .aio-theme-fab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: static;
+  flex: 0 0 auto;
+  min-height: var(--ctl-h-sm, 32px);
+  padding: 6px 10px;
+  border-radius: var(--ctl-r-sm, 8px);
+  border: 1px solid var(--brass-dim);
+  background: rgba(10, 20, 32, 0.92);
+  color: var(--brass);
+  font-family: var(--display);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+.aio-return-fabs .aio-theme-fab.theme-toggle {
+  border-radius: var(--ctl-r-sm, 8px);
+  letter-spacing: 0.06em;
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+html.bright .aio-home-fab,
+html.bright .aio-return-fabs .aio-theme-fab {
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--brass);
+}
+html.aio-fullscreen-embed .topbar,
+html.aio-fullscreen-embed .sidebar,
+html.aio-fullscreen-embed .bottom-nav,
+html.aio-fullscreen-embed .bn-more-sheet,
+html.aio-fullscreen-embed .theme-fab,
+html.aio-fullscreen-embed .sidebar-backdrop,
+html.aio-fullscreen-embed .menu-btn,
+html.aio-fullscreen-embed .watch-strip {
+  display: none !important;
+}
+html.aio-fullscreen-embed {
+  --bottom-h: 0px;
+  --topbar-h: 0px;
+}
+/* Full screen: the window itself must never scroll, whatever the nav mode.
+   There is no shell chrome on screen to scroll past -- the frame is sized to
+   the viewport -- so an outer scrollbar is always wrong here, and it was the
+   reason a module could not be scrolled at full screen: the page grew taller
+   than the viewport, the window took the scroll, and the frame never got the
+   wheel. Each module scrolls inside its own frame instead.
+
+   Deliberately not written :not(.use-bottom-nav) like the desktop block
+   below it. That is what left this broken: the shell calls a short desktop
+   window a phone, so every rule guarded that way switched off. Full screen
+   is full screen on a phone and on a 24-inch monitor alike. */
+html.aio-fullscreen-embed,
+html.aio-fullscreen-embed body {
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html.aio-fullscreen-embed .app {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+html.aio-fullscreen-embed .body {
+  min-height: 0;
+  overflow: hidden;
+}
+/* Anything full screen that is NOT an embedded frame -- a shell page opened
+   full screen -- still has to be able to scroll, so the pane keeps its own
+   scrollbar rather than inheriting the hidden one above. */
+html.aio-fullscreen-embed .main {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* A frame fills the pane exactly, so the pane must not scroll behind it;
+   the module inside does its own scrolling. */
+html.aio-fullscreen-embed .main:has(.aio-embed-wrap),
+html.aio-fullscreen-embed .main:has(.eorb-embed-wrap) {
+  overflow: hidden;
+}
+html.aio-fullscreen-embed .app {
+  min-height: 100dvh;
+}
+html.aio-fullscreen-embed .body {
+  grid-template-columns: 1fr;
+  min-height: 100dvh;
+  height: 100dvh;
+}
+/* The pane owns the viewport; everything inside it takes what is left.
+ 
+   This used to size the pane, the wrap AND the frame each to 100dvh, with the
+   embed strip given back by a margin on the frame. That works only while the
+   frame is the pane's one and only child. Consumption Plan and Bunkering Plan
+   put a .bunker-file-bar above the wrap -- 101px in portrait, 55px in
+   landscape -- so a 100dvh wrap started that far down a 100dvh pane and its
+   bottom fell outside. The pane is overflow:hidden, by design, so the module's
+   own footer could not be scrolled to: measured at 101px unreachable in
+   Android portrait and 55px in every landscape case, on both pages, while the
+   embeds with no file bar were fine.
+ 
+   So the strip and the safe areas are now padding on the PANE, counted once,
+   and the wrap and frame are ordinary flex children that take the remainder.
+   A sibling bar of any height is then accounted for by the layout rather than
+   by arithmetic that has to be kept in step with it. */
+html.aio-fullscreen-embed .main,
+html.aio-fullscreen-embed .main:has(.aio-embed-wrap),
+html.aio-fullscreen-embed .main:has(.eorb-embed-wrap) {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--embed-bar-h) + env(safe-area-inset-top, 0px)) 0
+           env(safe-area-inset-bottom, 0px) !important;
+  min-height: 100dvh !important;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+html.aio-fullscreen-embed .aio-embed-wrap,
+html.aio-fullscreen-embed .eorb-embed-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+/* A file bar above the frame keeps its own height and is not squeezed; only
+   the frame gives way. */
+html.aio-fullscreen-embed .main > .bunker-file-bar {
+  flex: 0 0 auto;
+}
+html.aio-fullscreen-embed .aio-embed-frame,
+html.aio-fullscreen-embed .eorb-embed-frame {
+  flex: 1 1 auto;
+  /* The strip inset lives on the pane now; a margin here would charge for it
+     a second time and push the bottom back off the screen. */
+  margin-top: 0;
+  height: auto;
+  min-height: 0 !important;
+  max-height: none;
+}
+html.aio-fullscreen-embed .aio-return-fabs:not([hidden]) {
+  display: flex;
+}
+
+/* About / guide */
+.about-sub {
+  font-family: var(--display);
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin: 18px 0 8px;
+}
+.about-steps {
+  margin: 0 0 8px;
+  padding-left: 1.25rem;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.about-steps li { margin-bottom: 4px; }
+.about-faq dt {
+  margin-top: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.about-faq dd {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.guide-tools {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-bottom: 8px;
+  background: var(--panel, #102033);
+}
+.guide-search-label {
+  display: block;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+#aboutGuideSearch {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line, rgba(255,255,255,0.16));
+  background: var(--bg, #0a1420);
+  color: inherit;
+  font: inherit;
+}
+.guide-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.guide-chip {
+  border: 1px solid var(--line, rgba(255,255,255,0.16));
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.guide-chip.is-on {
+  background: var(--teal, #1f8a8a);
+  color: #041618;
+  border-color: transparent;
+  font-weight: 700;
+}
+html.bright .guide-chip.is-on { color: #fff; }
+.guide-item {
+  border-top: 1px solid var(--line, rgba(255,255,255,0.12));
+  padding: 8px 0 4px;
+}
+.guide-item summary {
+  cursor: pointer;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.guide-purpose {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.backup-page .backup-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+@media (min-width: 900px) {
+  .backup-page .backup-grid { grid-template-columns: 1fr 1fr; }
+}
+/* The page reads as three numbered steps: connect, then the fleet the
+   connection brings back, then the files that need no connection at all. */
+.backup-page .backup-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 26px 0 6px;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent, var(--brass, #c4a35a));
+}
+.backup-page .backup-step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.65em;
+  height: 1.65em;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.85em;
+  line-height: 1;
+}
+.backup-page .backup-step-hint { margin: 0 0 12px; }
+.backup-page .backup-section {
+  margin-bottom: 14px;
+}
+.backup-page .form-panel h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+/* One title style whether the block is a plain panel or a foldable one. */
+.backup-page .backup-section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.backup-page .backup-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+/* Configured server blocks stay open so fields remain editable after save. */
+.backup-page details.backup-section > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+  z-index: 1;
+}
+.backup-page details.backup-section > summary::-webkit-details-marker { display: none; }
+.backup-page details.backup-section > summary::before {
+  content: "\25B8";
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.backup-page details.backup-section[open] > summary::before { transform: rotate(90deg); }
+.backup-page .backup-summary-note {
+  margin-left: auto;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.backup-page details.backup-section[open] > summary { margin-bottom: 8px; }
+.backup-page details.backup-section .field,
+.backup-page details.backup-section input,
+.backup-page details.backup-section select,
+.backup-page details.backup-section button,
+.backup-page details.backup-section .btn-row {
+  position: relative;
+  z-index: 1;
+}
+/* A group inside a panel — the one-leg-at-a-time controls. */
+.backup-page .backup-subsection {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line, rgba(255,255,255,0.08));
+}
+.backup-page .backup-subsection h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+.backup-page #bk-progress-host .pdf-progress.active { margin-top: 0; }
+.bk-consistency-list { margin-top: 12px; }
+.bk-consistency-row {
+  display: grid;
+  grid-template-columns: auto minmax(7rem, 1.1fr) 1.3fr 1.3fr minmax(10rem, 1.6fr);
+  gap: 8px 12px;
+  align-items: start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line, rgba(255,255,255,0.08));
+  font-size: 13px;
+}
+.bk-consistency-head { color: var(--muted); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+@media (max-width: 800px) {
+  .bk-consistency-row { grid-template-columns: auto 1fr; }
+  .bk-consistency-head { display: none; }
+}
+.backup-page .hint { color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+.backup-page .btn-row { margin-top: 10px; }
+.backup-page .field.span2 { grid-column: 1 / -1; }
+.backup-page .backup-lib-list { margin-top: 10px; }
+/* Vessel library. A table cell's baseline put the ship name below the
+   buttons on a tablet, and overflow:hidden on the suite panel clipped the
+   leg control off the right edge of a Windows window. Each ship is one
+   row: the name on the left, the same three actions on the right, tops
+   lined up. Under 1180px (phone and tablet, where the bottom bar is the
+   menu) the actions sit under the name, full width. */
+.backup-lib-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 340px);
+  gap: 8px 16px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line, rgba(255,255,255,0.08));
+}
+.backup-lib-row:last-child { border-bottom: 0; }
+.backup-lib-meta { min-width: 0; }
+.backup-lib-name { font-weight: 650; line-height: 1.35; }
+.backup-lib-yours {
+  font-weight: 400;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.backup-lib-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.backup-lib-facts span { min-width: 0; overflow-wrap: anywhere; }
+.backup-lib-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+.backup-lib-actions .btn {
+  width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+.backup-lib-pull {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.backup-lib-pull select {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: var(--ctl-h-sm);
+}
+@media (max-width: 1180px) {
+  .backup-lib-row { grid-template-columns: minmax(0, 1fr); }
+}
+html.aio-suite .main .panel.backup-page { overflow: auto; }
+.backup-page .backup-remote-list {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  background: rgba(0,0,0,0.12);
+}
+.backup-page .backup-remote-item { margin: 6px 0; }
+/* Hidden Voyage bridge — not a visible nested page. */
+.backup-page .aio-backup-voyage-bridge {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  left: -9999px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.backup-page .aio-backup-voyage-bridge-frame {
+  width: 1px;
+  height: 1px;
+  border: 0;
+}
+
+
+/* Backup / Vessel Setup — wide layouts (tablet landscape + PC) */
+@media (min-width: 900px), ((orientation: landscape) and (min-width: 700px)) {
+  .backup-page .btn-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .backup-page .btn-row > .btn {
+    flex: 1 1 0;
+    min-width: max-content;
+    white-space: nowrap;
+    justify-content: center;
+  }
+  .vessel-setup-page .vessel-actions,
+  .vessel-setup-page .stamp-controls .btn-row,
+  .vessel-setup-page .vessel-identity-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .vessel-setup-page .vessel-actions > .btn,
+  .vessel-setup-page .stamp-controls .btn-row > .btn,
+  .vessel-setup-page .vessel-identity-actions > .btn {
+    width: 100%;
+    justify-content: center;
+    white-space: nowrap;
+  }
+  .vessel-setup-page .vessel-action-groups {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .vessel-setup-page .vessel-action-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .vessel-setup-page .vessel-action-group .group-label {
+    font-family: var(--display);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0;
+  }
+}
+
+/* ---------- Vessel stamp / Chief Engineer signature (Vessel Setup) ---------- */
+.btn.small { padding: 6px 10px; font-size: 0.82rem; border-radius: 8px; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.stamp-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; margin-top: 6px; }
+.stamp-controls { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.stamp-preview {
+  flex: 0 0 auto; width: 150px; min-height: 72px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: #fff; padding: 8px; text-align: center;
+}
+.stamp-preview img { max-width: 100%; max-height: 90px; object-fit: contain; display: block; }
+.stamp-empty { font-size: 11.5px; color: #5a6578; line-height: 1.4; }
+.stamp-check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--muted); cursor: pointer;
+}
+.stamp-check input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--brass); }
+
+.pdf-progress {
+  display: none;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.pdf-progress.active { display: block; }
+.pdf-progress-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px; margin-bottom: 8px;
+}
+.pdf-progress-title { font-weight: 650; font-size: 13px; color: var(--text); }
+.pdf-progress-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--brass); font-weight: 700; font-size: 13px;
+}
+.pdf-progress-msg { font-size: 13px; margin-top: 8px; color: var(--muted); }
+.pdf-progress-bar {
+  height: 10px; border-radius: 999px; background: rgba(0,0,0,0.2);
+  border: 1px solid var(--line); overflow: hidden; position: relative;
+}
+.pdf-progress-bar > div {
+  height: 100%; width: 30%; background: var(--brass);
+  transition: width .35s ease;
+}
+.pdf-progress-bar.indeterminate > div {
+  width: 40%;
+  animation: pdf-progress-slide 1.2s ease-in-out infinite;
+}
+@keyframes pdf-progress-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+
+.sigpad-overlay {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(4, 8, 18, .72);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.sigpad {
+  width: min(880px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex; flex-direction: column; gap: 12px;
+  max-height: 100%;
+  color: var(--text);
+}
+.sigpad-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.sigpad-title { font-weight: 700; font-size: 15px; }
+.sigpad-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.sigpad-sheet {
+  position: relative;
+  background: #fff;
+  border-radius: 8px;
+  height: min(46vh, 300px);
+  min-height: 180px;
+  overflow: hidden;
+  touch-action: none;
+}
+.sigpad-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.sigpad-baseline {
+  position: absolute; left: 8%; right: 8%; bottom: 46px;
+  border-bottom: 1px solid #98a2b3; pointer-events: none;
+}
+.sigpad-hint {
+  position: absolute; left: 0; right: 0; bottom: 18px;
+  text-align: center; font-size: 11.5px; color: #98a2b3; pointer-events: none;
+}
+.sigpad-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sigpad-spacer { flex: 1 1 auto; }
+@media (max-width: 640px) {
+  .sigpad-sheet { height: min(52vh, 260px); }
+  .sigpad-baseline { left: 5%; right: 5%; }
+  .stamp-preview { width: 100%; }
+}
+
+/* ---- Performance module layout (works in dark + bright) ---- */
+.grid-2 {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px;
+}
+.grid-3 {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px;
+}
+@media (max-width: 900px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}
+.basis-strip { margin-top: 12px; }
+.stat {
+  background: rgba(0,0,0,0.16); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; min-width: 0;
+}
+html.bright .stat { background: rgba(18,34,56,0.04); }
+.stat .label {
+  display: block; font-size: 0.68rem; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+}
+.stat .value {
+  display: block; font-family: var(--mono); font-size: 1.05rem;
+  color: var(--text); font-weight: 600; word-break: break-word;
+}
+.stat.iso .value { color: var(--teal); }
+.hint.warn { color: var(--danger); }
+.suggest-list, .perf-derived ul {
+  margin: 0; padding-left: 1.15rem; color: var(--muted); line-height: 1.5;
+}
+.perf-derived summary {
+  cursor: pointer; color: var(--brass); font-weight: 600;
+}
+.calc-board {
+  display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: start;
+}
+@media (max-width: 960px) {
+  .calc-board { grid-template-columns: 1fr; }
+}
+.calc-column { display: flex; flex-direction: column; gap: 12px; }
+.calc-column-title {
+  font-family: var(--display); font-size: 0.85rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--brass); margin: 4px 0 0;
+}
+.calc-card {
+  border: 1px solid var(--line-strong); border-radius: 10px;
+  background: rgba(0,0,0,0.12); padding: 12px 14px;
+}
+html.bright .calc-card { background: #fff; border-color: rgba(18,34,56,0.16); }
+.calc-card h3 {
+  margin: 0 0 6px; font-size: 0.95rem; color: var(--text); font-weight: 700;
+}
+.calc-card p {
+  margin: 0 0 10px; font-size: 0.82rem; color: var(--muted); line-height: 1.4;
+}
+.calc-card .field { margin-bottom: 8px; }
+.calc-card .field label {
+  display: block; font-size: 0.72rem; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px;
+}
+html.bright .calc-card .field label { color: #2a3544; }
+.calc-card .field input, .calc-card .field select {
+  max-width: none; width: 100%;
+}
+.calc-card .calc-result {
+  margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line);
+  font-family: var(--mono); font-size: 0.85rem; color: var(--text);
+  display: grid; gap: 4px;
+}
+.calc-card .calc-result strong { color: var(--teal); }
+html.bright .calc-card .calc-result strong { color: #0f4f49; }
+html.bright .stat .label { color: #2a3544; }
+html.bright .stat .value { color: #122238; }
+html.bright .calc-column-title { color: #6e4814; }
+.calc-card .calc-error { color: var(--danger); font-size: 0.82rem; margin-top: 8px; }
+
+/* Bright-mode contrast fixes for shared chrome */
+html.bright #main:empty::before { color: #4a5568 !important; }
+html.bright .empty { color: var(--muted); }
+html.bright .panel p,
+html.bright .section-head p { color: var(--muted); }
+html.bright .section-head h2 { color: var(--text); }
+html.bright table th { color: var(--muted); }
+html.bright table td { color: var(--text); }
+html.bright .btn:not(.primary) { color: var(--text); border-color: var(--line-strong); }
+html.bright code { color: var(--accent-2); }
+
+/* Screen only. The printed forms are laid out deliberately and a
+   column moving on a signed sheet is not a styling detail. */
+@media screen {
+  /* Numbers line up or they cannot be compared — see js/num-align.js, which
+     decides which columns these apply to by reading what is in them. */
+  td.num, th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Figures stay the same width in every cell even where a column is mixed. */
+  table td, table th { font-variant-numeric: tabular-nums; }
+
+  /* The vessel library asks for .data-table, which nothing styled — leaving it
+     with the browser's 1px cell padding and no rules. Same treatment as the
+     suite's other tables. */
+  table.data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  table.data-table th, table.data-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+  }
+  table.data-table th {
+    color: var(--muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+}
+
+
+/* One control scale for the whole suite.
+ *
+ * Measured before this existed: thirteen distinct button heights across the
+ * AIO and its two modules (27, 28, 29, 30, 34, 36, 37, 38, 39, 40, 44, 70),
+ * eleven input heights, seven border radii. Each program had a scale; they
+ * disagreed, so a button beside a field was never quite the same height.
+ *
+ * These values are duplicated in apps/web/css/shell.css,
+ * modules/tanks/public/css/app.css and the <style> block in
+ * modules/voyage/www/voyage_manager.html — three documents that cannot share
+ * a file. Change one, change all three.
+ *
+ * The coarse-pointer step is not cosmetic: the same pages run on an engine
+ * room tablet, where a 32px control is a missed tap.
+ */
+:root {
+  --ctl-h: 38px;      /* buttons and fields, so they line up side by side */
+  --ctl-h-sm: 32px;   /* in-table actions, chips, toggles */
+  --ctl-r: 10px;
+  --ctl-r-sm: 8px;
+  --cell-pad-y: 6px;
+  --cell-pad-x: 10px;
+
+  /* The bottom bar is a control too, and the one a chief hits most often.
+     46px is a phone's bar: it has to leave room for the page. */
+  --nav-item-h: 46px;
+  --nav-ic: 18px;
+  --nav-label: 12px;
+  --nav-pad-y: 3px;
+}
+@media (pointer: coarse) {
+  :root {
+    --ctl-h: 44px;
+    --ctl-h-sm: 38px;
+  }
+}
+
+/* A tablet, told from a phone by having room on both sides: a phone in
+   landscape is wide but short, and is still a phone. On the tablet the bar
+   is the program's main control, used standing up with the screen at arm's
+   length, so it gets a target that does not have to be aimed at — and the
+   label under the icon becomes readable rather than merely present. */
+@media (pointer: coarse) and (min-width: 600px) and (min-height: 600px) {
+  :root {
+    --nav-item-h: 72px;
+    --nav-ic: 26px;
+    --nav-label: 12px;
+    --nav-pad-y: 7px;
+  }
+}
+
+/* Applied to the AIO shell's own controls. Heights are a floor, not a fix:
+   a button whose label wraps still grows. */
+.btn {
+  min-height: var(--ctl-h);
+  border-radius: var(--ctl-r);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn.small {
+  min-height: var(--ctl-h-sm);
+  border-radius: var(--ctl-r-sm);
+}
+.vessel-switcher select,
+.field input, .field select, .field textarea {
+  min-height: var(--ctl-h);
+  border-radius: var(--ctl-r);
+}
+.field textarea { min-height: calc(var(--ctl-h) * 2); }
+.theme-toggle, .btn.theme-toggle { min-height: var(--ctl-h-sm); }
+.chip { min-height: var(--ctl-h-sm); }
+table.data th, table.data td,
+table.data-table th, table.data-table td {
+  padding: var(--cell-pad-y) var(--cell-pad-x);
+}
+/* In-table actions are the small size — a full-height button in a row of
+   figures makes the row taller than the data in it. */
+table .btn {
+  min-height: var(--ctl-h-sm);
+  /* The padding has to come down with it — a floor cannot shrink a
+     button that its own padding already makes taller. */
+  padding: 4px 10px;
+  border-radius: var(--ctl-r-sm);
+}
+
+/* Nothing in this suite is smaller than 12px.
+ *
+ * Measured across the AIO and both modules: 56 rules produced 761 visible
+ * elements under 12px, with a floor of 8px. On an engine room PC read at
+ * arm's length, 9px labels on a readout are not small — they are not there.
+ *
+ * !important, deliberately. The sizes being raised are set by rules more
+ * specific than anything that can be written here without naming every
+ * ancestor, and a floor that only reaches half of them is not a floor. The
+ * block is scoped to @media screen, so it cannot reach the printed forms.
+ */
+@media screen {
+  .app-version,
+  .ver, .author, .registered,
+  .vessel-chip span,
+  .brand-text > span,
+  .theme-toggle, .btn.theme-toggle, .aio-home-fab,
+  label, .label, .field label,
+  .cards-row .card .label,
+  .gauge-cap, .gauge-label,
+  .tg-name, .tg-chip, .tg-pct, .tg-stats,
+  .home-kicker,
+  .tg-schematic-col-tanks .tg-pct,
+  .stamp-empty, .group-label,
+  .tg-val, .tg-sub, .card .sub, .card .unit,
+  table th, table td,
+  .hint, .empty {
+    font-size: 12px !important;
+  }
+  /* Uppercase tracked labels need the room the extra pixels ask for. */
+  .field label, .cards-row .card .label, .gauge-label { letter-spacing: 0.05em; }
+}
+
+/* Windows desktop: Segoe UI and flatter controls. Theme colour tokens stay. */
+@media (min-width: 1181px) {
+  html:not(.use-bottom-nav):not(.aio-android-nav) {
+    --display: "Segoe UI", "Segoe UI Variable Text", system-ui, sans-serif;
+    --font: "Segoe UI", "Segoe UI Variable Text", system-ui, sans-serif;
+  }
+  html:not(.use-bottom-nav):not(.aio-android-nav) .btn,
+  html:not(.use-bottom-nav):not(.aio-android-nav) button,
+  html:not(.use-bottom-nav):not(.aio-android-nav) .brand-text strong,
+  html:not(.use-bottom-nav):not(.aio-android-nav) .panel.hero h1,
+  html:not(.use-bottom-nav):not(.aio-android-nav) .nav-item {
+    font-family: "Segoe UI", "Segoe UI Variable Text", system-ui, sans-serif;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  html:not(.use-bottom-nav):not(.aio-android-nav) .btn,
+  html:not(.use-bottom-nav):not(.aio-android-nav) button {
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  html:not(.use-bottom-nav):not(.aio-android-nav) .panel {
+    border-radius: 6px;
+  }
+  html:not(.use-bottom-nav):not(.aio-android-nav) .field input,
+  html:not(.use-bottom-nav):not(.aio-android-nav) .field select,
+  html:not(.use-bottom-nav):not(.aio-android-nav) .field textarea {
+    border-radius: 4px;
+    font-family: "Segoe UI", "Segoe UI Variable Text", system-ui, sans-serif;
+  }
+}
+
+/* ChEng AIO pages that are not a Voyage or Tank embed: one plate for the
+   whole ship. Course ticks along the top (the voyage), a sight glass of
+   every liquid down the side (the tanks), brass and fuel on the buttons. */
+html.aio-suite .main .panel {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--brass) 48%, var(--line));
+}
+html.aio-suite .main .panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, var(--brass) 0 12px, transparent 12px 18px);
+}
+html.aio-suite .main .panel::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.45), transparent 46%, rgba(0,0,0,.22)),
+    linear-gradient(180deg,
+      rgba(255,255,255,.12) 0 6%,
+      #7ec8ff 6% 8%,
+      #1f6fb2 8% 30%,
+      #f0c14a 30% 33%,
+      #c8960a 33% 54%,
+      #6b3a1f 54% 76%,
+      #e8771a 76% 100%);
+}
+html.bright.aio-suite .main .panel::after {
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.85), transparent 48%, rgba(18,34,56,.12)),
+    linear-gradient(180deg,
+      #efe6d6 0 6%,
+      #7ec8ff 6% 8%,
+      #1f6fb2 8% 30%,
+      #f0c14a 30% 33%,
+      #c8960a 33% 54%,
+      #6b3a1f 54% 76%,
+      #e8771a 76% 100%);
+}
+html.aio-suite .main .btn,
+html.aio-suite .main .toggle-row button {
+  box-shadow: inset 4px 0 0 #6b3a1f, inset 0 2px 0 var(--brass);
+}
+html.aio-suite .main .btn.primary,
+html.aio-suite .main .toggle-row button.on {
+  box-shadow: inset 4px 0 0 #1a1208, inset 0 -3px 0 #1f6fb2;
+}
+html.aio-suite .main .card,
+html.aio-suite .main .calc-card,
+html.aio-suite .main .stat {
+  position: relative;
+  overflow: hidden;
+}
+html.aio-suite .main .card,
+html.aio-suite .main .calc-card {
+  padding-left: 22px;
+}
+html.aio-suite .main .card::before,
+html.aio-suite .main .calc-card::before,
+html.aio-suite .main .stat::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.4), transparent 50%, rgba(0,0,0,.18)),
+    linear-gradient(180deg, #7ec8ff 0 18%, #1f6fb2 18% 40%, #e6a817 40% 62%, #6b3a1f 62% 84%, #e8771a 84% 100%);
+}
+html.aio-suite .main .card::after,
+html.aio-suite .main .calc-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 0;
+  height: 3px;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, var(--brass) 0 8px, transparent 8px 13px);
+}
+html.aio-suite .home-voyage-strip .stat {
+  padding-left: 10px;
+  overflow: visible;
+}
+html.aio-suite .home-voyage-strip .stat::before { content: none; }
+html.aio-suite .main .calc-result {
+  border-top: none;
+  background-image:
+    repeating-linear-gradient(90deg, var(--brass) 0 8px, transparent 8px 13px),
+    linear-gradient(180deg, rgba(31,111,178,.14), transparent 80%);
+  background-size: 100% 3px, 100% 100%;
+  background-repeat: no-repeat;
+  background-position: top left, 0 0;
+}
+
+/* Phone and tablet: equal cards, a readable bar, and larger finger targets.
+   Portrait uses two columns so a leftover card takes the whole row. */
+.cards-row { align-items: stretch; }
+.cards-row .card { height: 100%; display: flex; flex-direction: column; box-sizing: border-box; }
+@media (max-width: 700px) and (orientation: portrait),
+       (min-width: 701px) and (max-width: 1100px) and (orientation: portrait) {
+  .cards-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cards-row .card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .cards-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cards-row .card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) and (orientation: portrait) {
+  .toggle-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+  .toggle-row button { width: 100%; justify-content: center; text-align: center; }
+  .toggle-row button:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@media (max-width: 900px) and (orientation: portrait),
+       (orientation: landscape) and (max-height: 520px) {
+  .tg-schematic { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (pointer: coarse) {
+  .toggle-row button,
+  html.aio-suite .main .btn {
+    min-height: 44px;
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+}
+@media (pointer: coarse) and (max-width: 700px) {
+  :root { --nav-label: 12px; --nav-item-h: 56px; }
+}
+@media (pointer: coarse) and (min-width: 700px) and (min-height: 700px) {
+  .toggle-row button,
+  html.aio-suite .main .btn {
+    min-height: 48px;
+    padding: 10px 18px;
+    font-size: 15px;
+  }
+  html.use-bottom-nav .bottom-item { font-size: 12px; }
+  :root { --nav-label: 12px; --nav-item-h: 64px; }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+  :root { --nav-label: 12px; --nav-item-h: 52px; }
+}
+
+/* A ship under the suite pages, drawn in the theme's brass. It stays behind
+   the app, so the figures keep a clear card. The hull only ghosts through. */
+html.aio-suite body::before {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64vh;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--brass);
+  -webkit-mask: url("../icons/wash-ship.svg") center bottom / min(1100px, 168vw) auto no-repeat;
+  mask: url("../icons/wash-ship.svg") center bottom / min(1100px, 168vw) auto no-repeat;
+  opacity: 0.32;
+  animation: aio-swell 34s ease-in-out infinite;
+}
+html.bright.aio-suite body::before { opacity: 0.18; }
+html.prism.aio-suite body::before,
+html.astrolabe.aio-suite body::before { opacity: 0.28; }
+html.aio-suite .app { position: relative; z-index: 1; }
+html.aio-suite .main .panel {
+  background: color-mix(in srgb, var(--panel-solid) 86%, transparent);
+}
+@keyframes aio-swell {
+  0%, 100% { transform: translate3d(0, 12px, 0); }
+  50% { transform: translate3d(-20px, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.aio-suite body::before { animation: none; }
+}
+@media print {
+  html.aio-suite body::before { display: none !important; }
+}
+
+/* Off-screen, still running. display:none would freeze the save. */
+/* Off to the side, still in the page. Moving the iframe reloads it and
+   drops the save. display:none would freeze the script. */
+.aio-embed-wrap.aio-background-save {
+  position: fixed !important;
+  left: -2400px !important;
+  top: 0 !important;
+  width: 800px !important;
+  height: 600px !important;
+  margin: 0 !important;
+  pointer-events: none !important;
+}
+#aioPageHost {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  pointer-events: auto;
+}
+
+.aio-vessel-load-hold {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 12, 20, 0.55);
+}
+.aio-vessel-load-hold[hidden] { display: none !important; }
+.aio-vessel-load-card {
+  width: min(440px, 100%);
+  background: var(--panel-solid, #122238);
+  color: var(--text, #fff8ee);
+  border: 1px solid var(--line-strong, rgba(201, 154, 83, 0.45));
+  border-radius: 14px;
+  padding: 22px 22px 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.aio-vessel-load-kicker {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brass, #c99a53);
+}
+.aio-vessel-load-name {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+}
+.aio-vessel-load-note {
+  margin: 10px 0 0;
+  color: var(--muted, #c5d0dc);
+  font-size: 14px;
+  line-height: 1.4;
+}
+html.bright .aio-vessel-load-card { background: #fff; }
+
+
+/* Bunkering valve warning, mirrored from the Tank embed (see shell.js). */
+html.aio-bunker-alert::after {
+  content: ''; position: fixed; inset: 0; z-index: 2147483000; pointer-events: none;
+  box-shadow: inset 0 0 0 4px #ff2d2d, inset 0 0 38px 10px rgba(255, 45, 45, .75);
+  animation: aio-bunker-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes aio-bunker-pulse { from { opacity: .45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { html.aio-bunker-alert::after { animation: none; } }
+@media print { html.aio-bunker-alert::after { display: none; } }
+
+/* Bottom-bar labels are 12px like all on-screen text; the narrowest phones (360px) cannot fit seven of them
+   at 12px, so they keep 11px. Same rule in the Tank and Voyage modules (scripts/test-suite-scale.js). */
+@media screen and (max-width: 380px) {
+  :root { --nav-label: 11px; }
+}
+
+/* A tablet held upright: the vessel list and its Load button share one row. */
+@media (min-width: 560px) and (max-width: 900px) {
+  .vessel-switcher-row { flex-wrap: nowrap !important; }
+  .vessel-switcher-row .btn { width: auto !important; }
+}
+
+/* Bright: amber/lime gauge ink was 1.6:1 on the cream card; darken the value text only */
+html.bright .gauge-value { color: color-mix(in srgb, var(--gauge-ink, var(--brass)) 50%, #000); }
+
+/* Landscape tablet: the More sheet is a floating panel beside the rail, not a full-width bottom sheet
+   (which slid under the rail and spread three buttons across 1200 px). */
+html.tablet-rail.use-bottom-nav .bn-more-sheet { left: calc(84px + env(safe-area-inset-left, 0px)); }
+html.tablet-rail.use-bottom-nav .bn-more-panel {
+  left: 12px; right: auto; bottom: 12px;
+  width: min(640px, calc(100% - 24px));
+  padding: 12px 12px 14px;
+  border: 1px solid var(--line); border-radius: 14px;
+  max-height: calc(100dvh - 24px);
+}
+
+/* any control a page forgot to style takes the theme instead of the browser's white box (zero specificity: every real rule still wins) */
+:where(.main input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([type=button]):not([type=submit]):not([type=reset]):not([type=image]):not([type=hidden]), .main select, .main textarea) {
+  background: rgba(0,0,0,0.22); border: 1px solid var(--line-strong); border-radius: 7px; color: var(--text); padding: 8px 10px; min-width: 0; box-sizing: border-box; color-scheme: inherit;
+}
+:where(html.bright .main input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([type=button]):not([type=submit]):not([type=reset]):not([type=image]):not([type=hidden]), html.bright .main select, html.bright .main textarea) { background: rgba(18,34,56,0.05); }
+:where(.main input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]):not([type=button]):not([type=submit]):not([type=reset]):not([type=image]):not([type=hidden]), .main select, .main textarea):focus { outline: none; border-color: var(--brass); }
+
+/* file pickers: themed button instead of the browser's grey one */
+input[type=file] { color: var(--text); font: inherit; max-width: 100%; }
+input[type=file]::file-selector-button {
+  background: transparent; color: var(--brass); border: 1px solid var(--line-strong); border-radius: 6px;
+  padding: 7px 14px; margin-right: 10px; font: inherit; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; cursor: pointer;
+}
+input[type=file]::file-selector-button:hover { border-color: var(--brass); }
+
+/* ---- Full-screen modules ------------------------------------------------------------------ */
+/* The shell's own menu is hidden here, so it must not leave its space behind (the 84px rail padding was a blank strip). */
+html.aio-fullscreen-embed:not(.aio-embed-menu).tablet-rail.use-bottom-nav .app { padding-left: 0 !important; }
+.bn-more-fs[hidden] { display: none !important; }
+/* Consumption Plan, Bunkering Plan and e-ORB keep the main menu: the bar along the bottom, or the rail at the left. */
+html.aio-fullscreen-embed.aio-embed-menu .bottom-nav { display: flex !important; }
+html.aio-fullscreen-embed.aio-embed-menu .bn-more-sheet.open { display: block !important; }
+html.aio-fullscreen-embed.aio-embed-menu { --bottom-h: calc(var(--nav-item-h) + (var(--nav-pad-y) * 2) + 4px); }
+html.aio-fullscreen-embed.aio-embed-menu:not(.tablet-rail) .main { padding-bottom: calc(var(--bottom-h) + env(safe-area-inset-bottom, 0px)) !important; }
+html.aio-fullscreen-embed.aio-embed-menu.tablet-rail .aio-return-fabs { left: calc(84px + env(safe-area-inset-left, 0px)); }
+/* Theme button: in the More menu on phones and tablets */
+.bn-more-theme { display: none; }
+html.use-bottom-nav .bn-more-theme { display: block; width: 100%; margin-top: 10px; padding: 12px; }
+html.use-bottom-nav .theme-topbar, html.use-bottom-nav .theme-sidebar { display: none !important; }
+html.aio-fullscreen-embed.aio-theme-in-more.use-bottom-nav .aio-return-fabs .aio-theme-fab { display: none !important; }

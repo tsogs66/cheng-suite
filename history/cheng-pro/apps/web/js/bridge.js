@@ -1,0 +1,235 @@
+(function (root) {
+  const listeners = new Set();
+  let active = null;
+  let activeAssets = { vesselLogo: null, chEngSignatures: {} };
+  let list = [];
+  let listLoaded = false;
+  let listTriedAt = 0;
+  let session = null;
+  const HINT_KEY = 'chengProActiveVesselHint';
+
+  function emit() {
+    for (const fn of listeners) {
+      try { fn(active); } catch (e) { console.error(e); }
+    }
+  }
+
+  function writeActiveHint(vessel) {
+    try {
+      if (vessel && vessel.id) {
+        localStorage.setItem(HINT_KEY, JSON.stringify({
+          id: vessel.id,
+          imo: vessel.imo || '',
+          name: vessel.name || '',
+          slug: vessel.voyageSlug || vessel.slug || vessel.id || '',
+        }));
+      } else {
+        localStorage.removeItem(HINT_KEY);
+      }
+    } catch { /* ignore */ }
+  }
+
+  /** Tell embedded Voyage / Tank iframes the shell vessel changed (IMO/name hint). */
+  function notifyEmbeds(vessel) {
+    try {
+      window.dispatchEvent(new CustomEvent('chengpro:vessel-changed', { detail: vessel }));
+    } catch { /* ignore */ }
+    const payload = {
+      type: 'chengaio-vessel-changed',
+      vessel: vessel ? {
+        id: vessel.id,
+        imo: vessel.imo || '',
+        name: vessel.name || '',
+        slug: vessel.voyageSlug || vessel.slug || vessel.id || '',
+        chiefEngineer: vessel.chiefEngineer || '',
+      } : null,
+      assets: activeAssets,
+    };
+    const identity = {
+      type: 'chengaio-identity-changed',
+      vessel: payload.vessel,
+      assets: activeAssets,
+    };
+    document.querySelectorAll('iframe').forEach((frame) => {
+      try {
+        if (frame.contentWindow) {
+          frame.contentWindow.postMessage(payload, '*');
+          frame.contentWindow.postMessage(identity, '*');
+        }
+      } catch { /* ignore */ }
+    });
+  }
+
+  async function refreshList() {
+    try {
+      const data = await ChengProApi.api('/api/shell/vessels');
+      list = data.vessels || [];
+      listLoaded = true;
+      const id = data.activeVesselId || ChengProApi.getActiveId();
+      if (id) {
+        ChengProApi.setActiveId(id);
+        try {
+          const shared = await ChengProApi.api('/api/shell/vessels/' + encodeURIComponent(id));
+          active = shared.vessel;
+          activeAssets = shared.assets || { vesselLogo: null, chEngSignatures: {} };
+        } catch {
+          active = list.find((v) => v.id === id) || null;
+          activeAssets = { vesselLogo: null, chEngSignatures: {} };
+        }
+      } else {
+        active = null;
+        activeAssets = { vesselLogo: null, chEngSignatures: {} };
+        ChengProApi.setActiveId('');
+      }
+      writeActiveHint(active);
+      emit();
+      return { list, active };
+    } catch (err) {
+      /* Keep any known list so Vessel Setup still opens for create/edit. */
+      emit();
+      throw err;
+    }
+  }
+
+  async function setActive(id) {
+    if (typeof root.ChengProFlushBeforeVesselChange === 'function') {
+      try { await root.ChengProFlushBeforeVesselChange(); } catch (err) { console.warn(err); }
+    }
+    await ChengProApi.api('/api/shell/vessels/active', {
+      method: 'POST',
+      body: JSON.stringify({ id: id || null }),
+    });
+    ChengProApi.setActiveId(id || '');
+    const result = await refreshList();
+    notifyEmbeds(active);
+    return result;
+  }
+
+  root.ChengPro = {
+    vessel: {
+      getActive: () => active,
+      getAssets: () => activeAssets,
+      notifyIdentity: () => notifyEmbeds(active),
+      list: async () => {
+        /* Read the register once, not every time it is empty. A ship with no
+           vessel yet has an empty list; refreshing on "empty" made every read
+           announce a change, the shell answered by redrawing Vessel Setup, and
+           Vessel Setup read the list again — a loop that redrew the page
+           hundreds of times a second and wiped whatever was being typed. After
+           a failed read, wait before trying again for the same reason. */
+        const now = Date.now();
+        if (!listLoaded && now - listTriedAt > 5000) {
+          listTriedAt = now;
+          try {
+            await refreshList();
+            listLoaded = true;
+          } catch (err) {
+            console.warn('ChEng AIO vessel list:', err.message);
+          }
+        }
+        return list.slice();
+      },
+      getListSync: () => list.slice(),
+      setActive,
+      refresh: refreshList,
+      subscribe: (fn) => {
+        listeners.add(fn);
+        return () => listeners.delete(fn);
+      },
+    },
+    auth: {
+      session: () => session,
+      setSession: (s) => { session = s; },
+    },
+    api: {
+      fetch: (path, init) => ChengProApi.api(path, init),
+    },
+    tankEmbedUrl: (opts) => {
+      const base = (window.ChengProBundled && ChengProBundled.isBundledClient())
+        ? ChengProBundled.moduleUrl('tanks')
+        : '/tanks/';
+      const url = base.includes('index.html')
+        ? base
+        : (base.replace(/\/?$/, '/') + 'index.html');
+      const q = new URLSearchParams({ chengaio: '1' });
+      if (opts && opts.page) q.set('page', String(opts.page));
+      if (opts && opts.bunkerEmbed) q.set('bunkerEmbed', String(opts.bunkerEmbed));
+      if (opts && opts.robOnly) q.set('robOnly', String(opts.robOnly));
+      return url + (url.includes('?') ? '&' : '?') + q.toString();
+    },
+    openTanks: (opts) => {
+      if (window.ChengLicense && !ChengLicense.moduleAllowed('tanks')) {
+        window.dispatchEvent(new CustomEvent('chengpro:toast', {
+          detail: 'Tank Chief is not on this license — ask the office to include it on your ChEng AIO key.',
+        }));
+        window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'tanks' }));
+        return;
+      }
+      try { localStorage.setItem('chengAioEmbedded', '1'); } catch { /* ignore */ }
+      if (opts && opts.page) {
+        try { sessionStorage.setItem('chengAioPendingTankPage', String(opts.page)); } catch { /* ignore */ }
+      }
+      /* Stay in the AIO shell so bottom nav (Home) remains available. */
+      if (root.ChengProModules && root.ChengProModules.tanks) {
+        window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'tanks' }));
+        return;
+      }
+      window.location.href = root.ChengPro.tankEmbedUrl(opts || {});
+    },
+    voyageEmbedUrl: (opts) => {
+      const base = (window.ChengProBundled && ChengProBundled.isBundledClient())
+        ? ChengProBundled.moduleUrl('voyage')
+        : '/voyage/';
+      const url = base.includes('voyage_manager') || base.includes('index.html')
+        ? base
+        : (base.replace(/\/?$/, '/') + 'voyage_manager.html');
+      const q = new URLSearchParams({ chengaio: '1' });
+      if (opts && opts.page) q.set('page', String(opts.page));
+      if (opts && opts.eorbEmbed) q.set('eorbEmbed', String(opts.eorbEmbed));
+      /* The iframe paints this name before its own database opens, so the
+         header does not keep the ship that was on screen last time. */
+      if (active && active.name) q.set('aioVessel', active.name);
+      if (active && active.imo) q.set('aioImo', active.imo);
+      return url + (url.includes('?') ? '&' : '?') + q.toString();
+    },
+    openVoyage: (opts) => {
+      if (window.ChengLicense && !ChengLicense.moduleAllowed('voyage')
+          && !(opts && opts.page === 'orb' && ChengLicense.moduleAllowed('eorb'))) {
+        window.dispatchEvent(new CustomEvent('chengpro:toast', {
+          detail: 'Voyage Chief is not on this license — ask the office to include it on your ChEng AIO key.',
+        }));
+        window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'voyage' }));
+        return;
+      }
+      try { localStorage.setItem('chengAioEmbedded', '1'); } catch { /* ignore */ }
+      if (root.ChengProModules) {
+        if (opts && opts.page === 'orb') {
+          window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'eorb' }));
+          return;
+        }
+        if (opts && opts.page && opts.page !== 'orb') {
+          try { sessionStorage.setItem('chengAioPendingVoyagePage', String(opts.page)); } catch { /* ignore */ }
+        }
+        if (root.ChengProModules.voyage) {
+          /* Remount when a deep-link page is requested so ?page=entry|rob is applied
+             even if Voyage Chief is already the active module. */
+          const force = !!(opts && opts.page && opts.page !== 'orb');
+          window.dispatchEvent(new CustomEvent('chengpro:navigate', {
+            detail: force ? { module: 'voyage', force: true } : 'voyage',
+          }));
+          return;
+        }
+      }
+      window.location.href = root.ChengPro.voyageEmbedUrl(opts || {});
+    },
+    openEorb: () => {
+      if (window.ChengLicense && !ChengLicense.eorbLicensed()) {
+        window.dispatchEvent(new CustomEvent('chengpro:toast', {
+          detail: 'e-ORB is not on this license',
+        }));
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'eorb' }));
+    },
+  };
+})(window);

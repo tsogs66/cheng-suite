@@ -1,0 +1,394 @@
+'use strict';
+
+/**
+ * Patch the Capacitor-generated MainActivity with the two bridges the WebView
+ * cannot provide for itself: PrintManager, and writing a file to Downloads.
+ *
+ * android/ is gitignored and recreated in CI — same pattern as icons.
+ */
+const fs = require('fs');
+const path = require('path');
+
+const root = path.join(__dirname, '..');
+const mainPath = path.join(
+  root,
+  'android/app/src/main/java/marine/chengpro/app/MainActivity.java'
+);
+
+const SOURCE = `package marine.chengpro.app;
+
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.Context;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
+import android.print.PrintAttributes;
+import android.print.PrintDocumentAdapter;
+import android.print.PrintManager;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.provider.MediaStore;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+
+import com.getcapacitor.Bridge;
+import com.getcapacitor.BridgeActivity;
+
+/**
+ * The Android WebView implements neither window.print() nor a download
+ * manager, so both the printer picker and "save this backup where I can find
+ * it" have to come from the activity.
+ *
+ * Without the file bridge a JSON export on the phone is silently lost: the
+ * File System Access picker does not exist here, navigator.share refuses
+ * files, and a blob anchor click does nothing at all while still looking to
+ * the page like it worked. ChengAndroidFiles writes the file to
+ * Downloads/ChEngAIO through MediaStore and returns where it went, so the
+ * program can tell the user a path that is actually there.
+ */
+public class MainActivity extends BridgeActivity {
+  private WebView printWebView;
+  private boolean printBridgeInstalled = false;
+  private boolean fullscreenWanted = false;
+
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    installPrintBridgeSoon();
+  }
+
+  @Override
+  public void onStart() {
+    super.onStart();
+    installPrintBridgeSoon();
+  }
+
+  /** The system bars come back after a dialog or the share sheet; hide them again while full screen is wanted. */
+  @Override
+  public void onWindowFocusChanged(boolean hasFocus) {
+    super.onWindowFocusChanged(hasFocus);
+    if (hasFocus && fullscreenWanted) applyFullscreen(true);
+  }
+
+  private void applyFullscreen(final boolean on) {
+    try {
+      final Window window = getWindow();
+      if (on && Build.VERSION.SDK_INT >= 28) {
+        WindowManager.LayoutParams attrs = window.getAttributes();
+        attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        window.setAttributes(attrs);
+      }
+      if (Build.VERSION.SDK_INT >= 30) {
+        WindowInsetsController controller = window.getInsetsController();
+        if (controller == null) return;
+        if (on) {
+          controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+          controller.hide(WindowInsets.Type.systemBars());
+        } else {
+          controller.show(WindowInsets.Type.systemBars());
+        }
+      } else {
+        View decor = window.getDecorView();
+        decor.setSystemUiVisibility(on
+            ? (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+               | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+               | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+            : View.SYSTEM_UI_FLAG_VISIBLE);
+      }
+    } catch (Exception ignored) {
+      /* Full screen is a nicety; never let it stop the app. */
+    }
+  }
+
+  /** The program's "Full screen" switch in the More menu. */
+  private class FullscreenBridge {
+    @JavascriptInterface
+    public void set(final boolean on) {
+      fullscreenWanted = on;
+      runOnUiThread(() -> applyFullscreen(on));
+    }
+  }
+
+  private void installPrintBridgeSoon() {
+    new Handler(Looper.getMainLooper()).post(this::installPrintBridge);
+    new Handler(Looper.getMainLooper()).postDelayed(this::installPrintBridge, 400);
+  }
+
+  private void installPrintBridge() {
+    try {
+      Bridge bridge = getBridge();
+      if (bridge == null) return;
+      WebView webView = bridge.getWebView();
+      if (webView == null) return;
+      if (!printBridgeInstalled) {
+        webView.addJavascriptInterface(new PrintBridge(), "ChengAndroidPrint");
+        webView.addJavascriptInterface(new FileBridge(), "ChengAndroidFiles");
+        webView.addJavascriptInterface(new ReminderBridge(this), "ChengAndroidReminders");
+        webView.addJavascriptInterface(new SpeechBridge(this, webView), "ChengAndroidSpeech");
+        webView.addJavascriptInterface(new BunkerAlarmBridge(this), "ChengAndroidBunker");
+        webView.addJavascriptInterface(new FullscreenBridge(), "ChengAndroidFullscreen");
+        printBridgeInstalled = true;
+      }
+      webView.post(() -> webView.evaluateJavascript(
+          "window.__CHENG_ANDROID_PRINT__=true;window.__CHENG_ANDROID_FILES__=true;window.__CHENG_ANDROID_REMINDERS__=true;window.__CHENG_ANDROID_SPEECH__=true;window.__CHENG_ANDROID_BUNKER__=true;window.__CHENG_ANDROID_FULLSCREEN__=true;"
+              + "try{window.dispatchEvent(new CustomEvent('cheng-android-print-ready'));}catch(e){}",
+          null
+      ));
+    } catch (Exception ignored) {
+      /* Bridge may not be ready yet; delayed retry covers that. */
+    }
+  }
+
+  /**
+   * Writes a text file into the public Downloads folder.
+   *
+   * A backup is handed across the JavascriptInterface one piece at a time.
+   * One saveText of the whole suite file is larger than Android's Binder
+   * limit, and the WebView process dies — the app closes on "Export".
+   * beginSave / appendSaveChunk / finishSave is the same split the print
+   * bridge already uses. saveText remains for a short file from an older page.
+   */
+  private class FileBridge {
+    private OutputStream pendingOut;
+    private Uri pendingUri;
+    private File pendingLegacyFile;
+    private String pendingName = "cheng-aio-backup.json";
+    private String pendingError = "";
+
+    @JavascriptInterface
+    public String beginSave(final String fileName, final String mimeType, final int expectedLength) {
+      synchronized (this) {
+        abandonPending();
+        pendingError = "";
+        if (expectedLength < 0) return "";
+        pendingName = safeName(fileName);
+        final String mime = (mimeType == null || mimeType.trim().isEmpty())
+            ? "application/json" : mimeType.trim();
+        try {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContentResolver resolver = getContentResolver();
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, pendingName);
+            values.put(MediaStore.Downloads.MIME_TYPE, mime);
+            values.put(MediaStore.Downloads.RELATIVE_PATH,
+                Environment.DIRECTORY_DOWNLOADS + "/ChEngAIO");
+            values.put(MediaStore.Downloads.IS_PENDING, 1);
+            Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) return "";
+            OutputStream out = resolver.openOutputStream(uri);
+            if (out == null) {
+              try { resolver.delete(uri, null, null); } catch (Exception ignored) {}
+              return "";
+            }
+            pendingUri = uri;
+            pendingOut = out;
+            return "ok";
+          }
+          File dir = new File(
+              Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+              "ChEngAIO");
+          if (!dir.isDirectory() && !dir.mkdirs()) return "";
+          File target = new File(dir, pendingName);
+          pendingLegacyFile = target;
+          pendingOut = new FileOutputStream(target);
+          return "ok";
+        } catch (Exception e) {
+          pendingError = e.getMessage() == null ? "open failed" : e.getMessage();
+          abandonPending();
+          return "";
+        }
+      }
+    }
+
+    @JavascriptInterface
+    public void appendSaveChunk(final String chunk) {
+      if (chunk == null || chunk.isEmpty()) return;
+      synchronized (this) {
+        if (pendingOut == null || (pendingError != null && !pendingError.isEmpty())) return;
+        try {
+          pendingOut.write(chunk.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+          pendingError = e.getMessage() == null ? "write failed" : e.getMessage();
+        }
+      }
+    }
+
+    @JavascriptInterface
+    public String finishSave() {
+      synchronized (this) {
+        try {
+          if (pendingOut == null && pendingUri == null && pendingLegacyFile == null) return "";
+          if (pendingError != null && !pendingError.isEmpty()) {
+            abandonPending();
+            return "";
+          }
+          if (pendingOut != null) {
+            pendingOut.flush();
+            pendingOut.close();
+            pendingOut = null;
+          }
+          if (pendingUri != null) {
+            ContentValues done = new ContentValues();
+            done.put(MediaStore.Downloads.IS_PENDING, 0);
+            getContentResolver().update(pendingUri, done, null, null);
+            pendingUri = null;
+            return "Downloads/ChEngAIO/" + pendingName;
+          }
+          if (pendingLegacyFile != null) {
+            String where = pendingLegacyFile.getAbsolutePath();
+            pendingLegacyFile = null;
+            return where;
+          }
+          return "";
+        } catch (Exception e) {
+          abandonPending();
+          return "";
+        }
+      }
+    }
+
+    @JavascriptInterface
+    public String saveText(final String fileName, final String text, final String mimeType) {
+      final String opened = beginSave(fileName, mimeType, text == null ? 0 : text.length());
+      if (opened == null || opened.isEmpty()) return "";
+      appendSaveChunk(text);
+      return finishSave();
+    }
+
+    private void abandonPending() {
+      try {
+        if (pendingOut != null) pendingOut.close();
+      } catch (Exception ignored) {}
+      pendingOut = null;
+      if (pendingUri != null) {
+        try { getContentResolver().delete(pendingUri, null, null); } catch (Exception ignored) {}
+        pendingUri = null;
+      }
+      if (pendingLegacyFile != null) {
+        try { if (!pendingLegacyFile.delete()) pendingLegacyFile.deleteOnExit(); }
+        catch (Exception ignored) {}
+        pendingLegacyFile = null;
+      }
+    }
+
+    private String safeName(String raw) {
+      String name = raw == null ? "" : raw.trim().replaceAll("[\\\\/:*?<>|]+", "-");
+      if (name.isEmpty()) name = "cheng-aio-backup.json";
+      return name;
+    }
+  }
+
+  private class PrintBridge {
+    private final StringBuilder printJobHtml = new StringBuilder();
+    private String printJobName = "ChEng AIO";
+
+    @JavascriptInterface
+    public void beginPrintJob(final String jobName, final int expectedLength) {
+      synchronized (printJobHtml) {
+        printJobHtml.setLength(0);
+        if (expectedLength > 0 && expectedLength < 8_000_000) {
+          printJobHtml.ensureCapacity(expectedLength);
+        }
+        printJobName = (jobName == null || jobName.trim().isEmpty())
+            ? "ChEng AIO" : jobName.trim();
+      }
+    }
+
+    @JavascriptInterface
+    public void appendPrintChunk(final String chunk) {
+      if (chunk == null || chunk.isEmpty()) return;
+      synchronized (printJobHtml) {
+        printJobHtml.append(chunk);
+      }
+    }
+
+    @JavascriptInterface
+    public void finishPrintJob() {
+      final String html;
+      final String name;
+      synchronized (printJobHtml) {
+        html = printJobHtml.toString();
+        name = printJobName;
+        printJobHtml.setLength(0);
+      }
+      printHtml(html, name);
+    }
+
+    @JavascriptInterface
+    public void printHtml(final String html, final String jobName) {
+      runOnUiThread(() -> {
+        final String name = (jobName == null || jobName.trim().isEmpty()) ? "ChEng AIO" : jobName.trim();
+        if (printWebView != null) {
+          try {
+            printWebView.destroy();
+          } catch (Exception ignored) {
+          }
+          printWebView = null;
+        }
+        printWebView = new WebView(MainActivity.this);
+        WebSettings settings = printWebView.getSettings();
+        settings.setJavaScriptEnabled(false);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        printWebView.setWebViewClient(new WebViewClient() {
+          @Override
+          public void onPageFinished(WebView view, String url) {
+            try {
+              PrintManager printManager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+              if (printManager == null) return;
+              PrintDocumentAdapter adapter = view.createPrintDocumentAdapter(name);
+              PrintAttributes.MediaSize media = PrintAttributes.MediaSize.ISO_A4;
+              String src = html != null ? html.toLowerCase(Locale.US) : "";
+              if (src.contains("size: a4 landscape") || src.contains("size:a4 landscape")) {
+                media = media.asLandscape();
+              }
+              PrintAttributes attrs = new PrintAttributes.Builder()
+                  .setMediaSize(media)
+                  .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                  .build();
+              printManager.print(name, adapter, attrs);
+            } catch (Exception ignored) {
+            }
+          }
+        });
+        printWebView.loadDataWithBaseURL(
+            "https://localhost/",
+            html != null ? html : "<html><body></body></html>",
+            "text/html",
+            "UTF-8",
+            null
+        );
+      });
+    }
+  }
+}
+`;
+
+if (!fs.existsSync(path.dirname(mainPath))) {
+  console.warn('apply-android-print-bridge: MainActivity path missing — skip (run cap add/sync first)');
+  process.exit(0);
+}
+
+fs.writeFileSync(mainPath, SOURCE);
+
+/* Notes alarms and the calendar hand-off live in their own classes. */
+const reminders = require('./android-reminders-java');
+for (const [name, text] of Object.entries(reminders.files)) {
+  fs.writeFileSync(path.join(path.dirname(mainPath), name), text);
+}
+console.log('apply-android-print-bridge: wrote MainActivity with print + file + reminder bridges');

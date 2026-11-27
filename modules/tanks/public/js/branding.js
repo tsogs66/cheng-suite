@@ -1,0 +1,588 @@
+/**
+ * The application's name and who wrote it, in one place.
+ *
+ * Every window title, masthead, About page and printed footer reads from here,
+ * so renaming it is one edit rather than a hunt through eighteen string
+ * literals — which is how the previous name ended up spelled three different
+ * ways across the same application.
+ */
+const Branding = (() => {
+  const APP_NAME = 'Tank Chief';
+  const APP_VERSION = '2.2.83';
+  const AUTHORS = ['ts0gs', 'Marvin C. Endozo'];
+
+  /** "ts0gs · Marvin C. Endozo" */
+  const authorLine = () => AUTHORS.join(' · ');
+
+  /** The line that goes at the foot of anything printed. */
+  const creditLine = () => `${APP_NAME} — ${authorLine()}`;
+
+  /**
+   * The printed footer.
+   *
+   * Dated as well as credited: a sounding sheet without a date on the page it
+   * was printed from is hard to place once it is in a folder with six others.
+   */
+  function printCredit() {
+    const when = new Date().toLocaleString([], {
+      year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
+    return `<div class="app-credit-print">
+      <span class="app-credit-name">${APP_NAME}</span>
+      <span class="app-credit-authors">${AUTHORS.join(' &middot; ')}</span>
+      <span class="app-credit-when">${when}</span>
+    </div>`;
+  }
+
+  function escPrint(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /**
+   * Voyage-style document header used on every Tank print sheet:
+   * vessel + dept | badge + title + subtitle | right label/value.
+   */
+  function printDocHeader(opts = {}) {
+    const vessel = opts.vessel || 'Vessel';
+    const title = opts.title || '';
+    const subtitle = opts.subtitle || '';
+    const badge = opts.badge || '';
+    const rightLabel = opts.rightLabel || 'Voyage No.';
+    const rightValue = opts.rightValue != null && opts.rightValue !== '' ? opts.rightValue : '—';
+    return `<header class="pr-doc-header">
+      <div>
+        <div class="pr-doc-vessel">${escPrint(vessel)}</div>
+        <div class="pr-doc-dept">Engine Department — ${escPrint(APP_NAME)}</div>
+      </div>
+      <div class="pr-doc-title-wrap">
+        ${badge ? `<div class="pr-doc-badge">${escPrint(badge)}</div>` : ''}
+        <h1 class="pr-doc-title">${escPrint(title)}</h1>
+        ${subtitle ? `<div class="pr-doc-subtitle">${escPrint(subtitle)}</div>` : ''}
+      </div>
+      <div class="pr-doc-voyage">
+        <span class="pr-doc-voy-label">${escPrint(rightLabel)}</span>
+        <span class="pr-doc-voy-num">${escPrint(rightValue)}</span>
+      </div>
+    </header>`;
+  }
+
+  /** Voyage-style meta grid: [{label, value}, …] */
+  function printMetaGrid(cells, cols) {
+    const list = Array.isArray(cells) ? cells : [];
+    const cls = cols ? ` cols${cols}` : ' cols4';
+    return `<div class="pr-meta${cls}">${list.map((c) => `
+      <div class="pr-meta-cell"><span class="pr-meta-lbl">${escPrint(c.label || c[0] || '')}</span><span class="pr-meta-val">${c.value != null ? c.value : escPrint(c[1] ?? '—')}</span></div>
+    `).join('')}</div>`;
+  }
+
+  function fontStylesheetHref() {
+    try {
+      const base = document.querySelector('base')?.href;
+      if (base) return new URL('fonts/fonts.css', base).href;
+      return new URL('fonts/fonts.css', location.href).href;
+    } catch (_) {
+      return 'fonts/fonts.css';
+    }
+  }
+
+  /* Hold server upload / queue flush while the printer dialog is open. */
+  let printHold = 0;
+  const holdListeners = new Set();
+
+  function beginPrintHold() {
+    printHold += 1;
+  }
+
+  function endPrintHold() {
+    printHold = Math.max(0, printHold - 1);
+    if (printHold > 0) return;
+    holdListeners.forEach((fn) => {
+      try { fn(); } catch (_) { /* ignore */ }
+    });
+    holdListeners.clear();
+    try {
+      window.dispatchEvent(new CustomEvent('tank:print-hold-end'));
+    } catch (_) { /* ignore */ }
+  }
+
+  function isPrintHold() {
+    return printHold > 0;
+  }
+
+  /** Run fn after the print dialog closes (or immediately if not printing). */
+  function afterPrintHold(fn) {
+    if (!isPrintHold()) {
+      try { fn(); } catch (_) { /* ignore */ }
+      return;
+    }
+    holdListeners.add(fn);
+  }
+
+  function hasAndroidPrintBridge() {
+    try {
+      return !!(window.ChengAndroidPrint
+        && (typeof ChengAndroidPrint.printHtml === 'function'
+          || typeof ChengAndroidPrint.finishPrintJob === 'function'));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function parentAioBridge() {
+    if (!(window.parent && window.parent !== window)) {
+      return { available: false, verified: false };
+    }
+    try {
+      const available = !!(window.parent.ChengAioPrint
+        || window.parent.ChengAndroidPrint
+        || window.parent.__CHENG_ANDROID_PRINT__
+        || window.parent.ChengPro
+        || window.parent.ChengProShell);
+      return { available, verified: true };
+    } catch (_) {
+      /* Cross-origin embed: try postMessage, but fall back locally if silent. */
+      return { available: true, verified: false };
+    }
+  }
+
+  /**
+   * Prefer a native / AIO print bridge only when one is actually available.
+   * A bare Capacitor flag with no PrintManager interface used to claim a
+   * bridge and then swallow the click (window.print is a no-op on Android).
+   */
+  function shouldBridgePrint() {
+    try {
+      if (window.__CHENG_ANDROID_PRINT__ || hasAndroidPrintBridge()) return true;
+      if (parentAioBridge().available) return true;
+    } catch (_) { /* ignore */ }
+    return false;
+  }
+
+  function collectStylesCss() {
+    const chunks = [];
+    for (const sheet of document.styleSheets) {
+      try {
+        const rules = sheet.cssRules || sheet.rules;
+        if (!rules) continue;
+        for (const rule of rules) chunks.push(rule.cssText);
+      } catch (_) {
+        if (sheet.href) chunks.push(`@import url("${sheet.href}");`);
+      }
+    }
+    return chunks.join('\n');
+  }
+
+  /** Capacity book sets printing-calib. Every other sheet is portrait. */
+  function printJobIsLandscape(bodyClass) {
+    return /\bprinting-calib\b/.test(String(bodyClass || ''));
+  }
+
+  /**
+   * Android PrintManager and the AIO print bridge treat any
+   * "size: A4 landscape" in the document as a landscape job. Named landscape
+   * pages therefore have to stay out of portrait sheets (tank summary,
+   * tank condition, bunker plan).
+   */
+  function stripNamedLandscapePage(css) {
+    return String(css || '').replace(/@page\s+landscape-sheet\s*\{[^}]*\}/gi, '');
+  }
+
+  function buildPrintableHtml(bodyHtml, bodyClass, title) {
+    const landscape = printJobIsLandscape(bodyClass);
+    let css = collectStylesCss();
+    if (!landscape) css = stripNamedLandscapePage(css);
+    const fontsHref = fontStylesheetHref();
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title || APP_NAME}</title>
+<link rel="stylesheet" href="${fontsHref}">
+<style>
+${css}
+/* Last so Android / AIO print cannot keep the night-theme canvas. @page
+   margin must stay 0 — PrintManager paints the canvas into page margins,
+   which became the thick black frame around Tank + Bunker Plan sheets. */
+@page { size: A4 portrait; margin: 0; }
+${landscape ? '@page landscape-sheet { size: A4 landscape; margin: 0; }' : ''}
+${landscape ? '' : 'body:not(.printing-calib) .calib-print-page, body:not(.printing-calib) .fr-tc-page { page: auto; }'}
+:root, html, body {
+  color-scheme: only light !important;
+  margin: 0 !important; padding: 0 !important;
+  background: #fff !important; color: #0a1420 !important;
+  border: none !important; outline: none !important; box-shadow: none !important;
+  font-family: 'Inter', sans-serif !important;
+}
+.calib-print-doc, .fuel-report-print-doc, .report-print-doc, #bc-print-root,
+.bc-pr-sheet, .fr-tc-page, .fr-tc-page-2, .calib-print-page {
+  display: block !important;
+  background: #fff !important;
+  border: none !important; outline: none !important; box-shadow: none !important;
+}
+.fuel-report-print-doc, .report-print-doc, #bc-print-root {
+  box-sizing: border-box !important; padding: 0 !important;
+}
+.report-print-doc, .bc-pr-sheet {
+  box-sizing: border-box !important; padding: 4mm !important;
+}
+.calib-print-page {
+  box-sizing: border-box !important; padding: 4mm !important;
+  page-break-after: always; break-after: page;
+}
+.calib-print-page:last-of-type {
+  page-break-after: auto !important; break-after: auto !important;
+}
+.app-shell, .sidebar, .bottom-nav, .bn-more-sheet, .theme-fab, .theme-toggle,
+.menu-toggle, .sidebar-backdrop, .no-print, .toast, .calib-sticky-actions,
+.pdf-import-panel, .pdf-progress { display: none !important; }
+.app-credit-print {
+  display: flex !important; gap: 10px; align-items: baseline;
+  margin-top: 4px; padding-top: 1mm; border-top: 1px solid #d4dce8;
+  color: #8a95a8; font-size: 8px; line-height: 1.4;
+  page-break-before: avoid; break-before: avoid;
+}
+/* Signature + vessel stamp — rubber-stamp overlap matching the paper build.
+   Concrete mm only (no CSS vars): Android/AIO print-bridge cssText drops
+   empty var() and the stamp vanishes. Zero-height box + negative margin
+   centres the stamp on the signature line.
+
+   Default (flex-end): Bunkering Plan — signature RIGHT, stamp LEFT.
+   .fr-tc-signoff: Tank Condition — signature LEFT, stamp RIGHT. */
+.fr-print-signrow {
+  display: flex !important; align-items: center !important;
+  justify-content: flex-end !important; gap: 0 !important; margin-top: 8px !important;
+}
+.fr-print-signrow.has-stamp { min-height: 30mm !important; }
+.fr-tc-signoff .fr-print-signrow { justify-content: flex-start !important; margin-top: 0 !important; }
+.fr-print-sign { flex: 0 0 62mm !important; font-size: 8pt !important; text-align: center !important; }
+.fr-print-sign-space {
+  height: 15mm !important; width: 62mm !important;
+  display: flex !important; align-items: flex-end !important; justify-content: center !important;
+}
+.fr-print-sign-space img {
+  position: static !important; left: auto !important; transform: none !important;
+  display: block !important;
+  max-height: 15mm !important; max-width: 62mm !important; object-fit: contain !important;
+  -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+}
+.fr-print-sign-line {
+  border-bottom: 0.6pt solid #8a96a8 !important; width: 62mm !important;
+  margin-bottom: 1.5mm !important; min-height: 0 !important; padding-top: 0 !important;
+}
+.fr-print-sign-name { font-weight: 700 !important; font-size: 9pt !important; }
+.fr-print-sign-role {
+  font-size: 7.5pt !important; text-transform: uppercase !important;
+  letter-spacing: .06em !important; color: #555 !important;
+}
+.fr-print-logo {
+  flex: 0 0 auto !important; display: block !important; align-self: flex-start !important;
+  height: 0 !important; overflow: visible !important;
+  order: -1 !important; margin-left: 0 !important; margin-right: -20.67mm !important;
+}
+.fr-tc-signoff .fr-print-logo {
+  order: 0 !important; margin-left: -20.67mm !important; margin-right: 0 !important;
+}
+.fr-print-logo img {
+  height: 41.8mm !important; width: auto !important; max-width: 110mm !important;
+  object-fit: contain !important; display: block !important;
+  position: relative !important; top: -5.9mm !important;
+  -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+}
+</style></head><body class="${bodyClass || ''}">${bodyHtml || ''}</body></html>`;
+  }
+
+  function printViaHiddenIframe(html, title, finish) {
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText =
+      'position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument;
+    doc.open();
+    doc.write(String(html || ''));
+    doc.close();
+    if (title) {
+      try { doc.title = title; } catch (_) { /* ignore */ }
+    }
+    const win = iframe.contentWindow;
+    let done = false;
+    const wrapFinish = () => {
+      if (done) return;
+      done = true;
+      try { win.removeEventListener('afterprint', wrapFinish); } catch (_) { /* ignore */ }
+      try { window.removeEventListener('afterprint', wrapFinish); } catch (_) { /* ignore */ }
+      try { iframe.remove(); } catch (_) { /* ignore */ }
+      finish();
+    };
+    try { win.addEventListener('afterprint', wrapFinish); } catch (_) { /* ignore */ }
+    try { window.addEventListener('afterprint', wrapFinish); } catch (_) { /* ignore */ }
+    const kick = () => {
+      try {
+        win.focus();
+        win.print();
+      } catch (err) {
+        console.warn('Tank iframe print failed', err);
+        wrapFinish();
+        return;
+      }
+      setTimeout(wrapFinish, 120000);
+    };
+    if (doc.fonts && doc.fonts.ready) {
+      doc.fonts.ready.then(() => setTimeout(kick, 40)).catch(() => setTimeout(kick, 120));
+    } else {
+      setTimeout(kick, 120);
+    }
+  }
+
+  /** Android Binder rejects large JavascriptInterface strings — chunk instead. */
+  function deliverAndroidPrint(html, title) {
+    const bridge = window.ChengAndroidPrint;
+    if (!bridge) throw new Error('No ChengAndroidPrint');
+    const job = title || APP_NAME;
+    const text = String(html || '');
+    if (typeof bridge.beginPrintJob === 'function'
+      && typeof bridge.appendPrintChunk === 'function'
+      && typeof bridge.finishPrintJob === 'function') {
+      const CHUNK = 200000;
+      bridge.beginPrintJob(job, text.length);
+      for (let i = 0; i < text.length; i += CHUNK) {
+        bridge.appendPrintChunk(text.slice(i, i + CHUNK));
+      }
+      bridge.finishPrintJob();
+      return;
+    }
+    if (typeof bridge.printHtml === 'function') {
+      bridge.printHtml(text, job);
+      return;
+    }
+    throw new Error('Android print bridge has no printHtml');
+  }
+
+  function deliverBridgedHtml(html, title, finish) {
+    const onDone = (ev) => {
+      if (ev && ev.data && ev.data.type === 'chengaio-print-done') finish();
+    };
+    try { window.addEventListener('message', onDone); } catch (_) { /* ignore */ }
+    const clearDone = () => {
+      try { window.removeEventListener('message', onDone); } catch (_) { /* ignore */ }
+    };
+    const wrappedFinish = () => {
+      clearDone();
+      finish();
+    };
+
+    try {
+      /* Prefer the native bridge on this window (standalone Tank APK). */
+      if (hasAndroidPrintBridge()) {
+        deliverAndroidPrint(html, title);
+        setTimeout(wrappedFinish, 1500);
+        return;
+      }
+      if (window.ChengAioPrint && typeof ChengAioPrint.printHtmlDocument === 'function') {
+        ChengAioPrint.printHtmlDocument(String(html || ''), title || APP_NAME);
+        setTimeout(wrappedFinish, 180000);
+        return;
+      }
+      const parentBridge = parentAioBridge();
+      if (parentBridge.available) {
+        const payload = { type: 'chengaio-print', html: String(html || ''), title: title || APP_NAME };
+        window.parent.postMessage(payload, '*');
+        let settled = false;
+        const onAck = (ev) => {
+          if (!(ev && ev.data && ev.data.type === 'chengaio-print-done')) return;
+          if (settled) return;
+          settled = true;
+          clearDone();
+          try { window.removeEventListener('message', onAck); } catch (_) { /* ignore */ }
+          finish();
+        };
+        const localFallback = () => {
+          if (settled) return;
+          settled = true;
+          clearDone();
+          try { window.removeEventListener('message', onAck); } catch (_) { /* ignore */ }
+          try {
+            printViaHiddenIframe(html, title || APP_NAME, finish);
+          } catch (err) {
+            console.warn('Tank print fallback failed', err);
+            finish();
+          }
+        };
+        try { window.removeEventListener('message', onDone); } catch (_) { /* ignore */ }
+        try { window.addEventListener('message', onAck); } catch (_) { /* ignore */ }
+        /* Verified AIO parent will ack; unverified cross-origin may be mute —
+           fall back so the Print button never looks dead. */
+        if (parentBridge.verified) {
+          setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            clearDone();
+            try { window.removeEventListener('message', onAck); } catch (_) { /* ignore */ }
+            finish();
+          }, 180000);
+        } else {
+          setTimeout(localFallback, 2500);
+        }
+        return;
+      }
+      throw new Error('No print bridge');
+    } catch (err) {
+      clearDone();
+      throw err;
+    }
+  }
+
+  /**
+   * Open the system printer dialog.
+   *
+   * Desktop: self-contained HTML in a hidden iframe (same approach as AIO /
+   * Voyage) — live-page window.print() is unreliable inside embeds and after
+   * theme CSS fights. Android / AIO: PrintManager bridge, with a fast local
+   * iframe fallback if the parent never answers.
+   */
+  /* One confirmation for every printout: the sheet has been handed to the print dialog / PDF writer. */
+  function notePrint(ok = true) {
+    try {
+      if (typeof showToast !== 'function') return;
+      showToast(ok ? 'Sent to print — choose a printer or Save as PDF' : 'Nothing to print');
+    } catch (_) { /* no toast host */ }
+  }
+
+  function printLiveDocument(prepare, cleanup, opts = {}) {
+    let finished = false;
+    const heldHere = !isPrintHold();
+    if (heldHere) beginPrintHold();
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      window.removeEventListener('afterprint', finish);
+      try { cleanup && cleanup(); } catch (_) { /* ignore */ }
+      endPrintHold();
+    };
+
+    let bodyHtml = '';
+    let bodyClass = opts.bodyClass || '';
+    try {
+      prepare && prepare();
+      if (opts.bodyHtml) {
+        bodyHtml = opts.bodyHtml;
+        bodyClass = opts.bodyClass || bodyClass;
+      } else {
+        const root = document.getElementById(opts.rootId || '')
+          || document.getElementById('fuel-report-print-root')
+          || document.getElementById('calib-print-root')
+          || document.getElementById('bc-print-root');
+        if (root) bodyHtml = root.outerHTML;
+        bodyClass = document.body.className || bodyClass;
+      }
+    } catch (err) {
+      finish();
+      throw err;
+    }
+
+    if (!bodyHtml) {
+      console.warn('Tank print: nothing to print');
+      finish();
+      notePrint(false);
+      return;
+    }
+
+    let html = '';
+    try {
+      html = buildPrintableHtml(bodyHtml, bodyClass, opts.title || APP_NAME);
+    } catch (err) {
+      console.warn('Tank print HTML build failed', err);
+      finish();
+      throw err;
+    }
+
+    if (shouldBridgePrint()) {
+      try {
+        deliverBridgedHtml(html, opts.title || APP_NAME, finish);
+        notePrint();
+        return;
+      } catch (err) {
+        console.warn('Tank print bridge failed, falling back to iframe print', err);
+      }
+    }
+
+    try {
+      printViaHiddenIframe(html, opts.title || APP_NAME, finish);
+      notePrint();
+    } catch (err) {
+      console.warn('Tank iframe print failed, last resort window.print', err);
+      window.removeEventListener('afterprint', finish);
+      window.addEventListener('afterprint', finish);
+      window.setTimeout(() => {
+        try {
+          window.print();
+        } catch (printErr) {
+          finish();
+          throw printErr;
+        }
+        notePrint();
+        window.setTimeout(finish, 120000);
+      }, 50);
+    }
+  }
+
+  /**
+   * Print a complete HTML document as-is (e.g. landscape handout cards).
+   * Unlike printLiveDocument, this does not wrap content in the portrait sheet chrome.
+   */
+  function printHtmlDocument(html, title, opts = {}) {
+    let finished = false;
+    const heldHere = !isPrintHold();
+    if (heldHere) beginPrintHold();
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      try { cleanupOpts && cleanupOpts(); } catch (_) { /* ignore */ }
+      endPrintHold();
+    };
+    const cleanupOpts = opts && typeof opts.cleanup === 'function' ? opts.cleanup : null;
+    const docHtml = String(html || '');
+    const job = title || APP_NAME;
+    if (!docHtml) {
+      finish();
+      return;
+    }
+    if (shouldBridgePrint()) {
+      try {
+        deliverBridgedHtml(docHtml, job, finish);
+        notePrint();
+        return;
+      } catch (err) {
+        console.warn('Tank printHtmlDocument bridge failed, falling back to iframe', err);
+      }
+    }
+    try {
+      printViaHiddenIframe(docHtml, job, finish);
+      notePrint();
+    } catch (err) {
+      finish();
+      throw err;
+    }
+  }
+
+  return {
+    APP_NAME,
+    APP_VERSION,
+    AUTHORS,
+    authorLine,
+    creditLine,
+    printCredit,
+    printDocHeader,
+    printMetaGrid,
+    escPrint,
+    printLiveDocument,
+    printHtmlDocument,
+    beginPrintHold,
+    endPrintHold,
+    isPrintHold,
+    afterPrintHold,
+    buildPrintableHtml,
+  };
+})();
+
+window.Branding = Branding;

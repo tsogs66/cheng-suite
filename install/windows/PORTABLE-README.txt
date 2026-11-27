@@ -1,0 +1,49 @@
+ChEng AIO — portable (USB)
+==========================
+
+WHAT THIS IS
+------------
+One Windows portable EXE. No installer, no Start menu, no registry, no
+administrator rights. Copy ChEngAIO-Portable-*.exe onto a USB stick and run it.
+
+
+WHERE YOUR DATA IS
+------------------
+Everything stays beside the EXE under:
+
+  ChEngAIO-data\
+    server\              tank + voyage sync databases (JSON)
+    electron-profile\    Electron / Chromium profile (IndexedDB, etc.)
+    desktop-ports.json   sticky local ports (keeps license + voyage DB)
+    server\desktop-license.json
+                         license backup (restored if browser storage is empty)
+
+Take the stick to another PC and the same vessels and voyages open again.
+
+The app always uses the same local ports when possible. Older builds picked a
+random port each launch, which made Windows treat each start as a new site and
+look like the license and Voyage data had been deleted — that is fixed here.
+
+
+STARTING IT
+-----------
+  1. Copy the portable EXE onto a writable USB (or folder).
+  2. Double-click it. First run creates ChEngAIO-data next to the EXE.
+  3. Use the app offline; optional cloud sync is under Settings if you want it.
+
+
+UPDATING
+--------
+Replace the EXE with a newer build. Leave ChEngAIO-data alone so records stay.
+
+If an older portable build used the folder name "cheng-pro-data" (or kept
+the license in %APPDATA%\cheng-pro), the new EXE copies that data into
+ChEngAIO-data on first launch so vessels and the license are not lost.
+
+
+REQUIREMENTS
+------------
+  - Windows 10 or 11
+  - Writable folder / USB on first run
+
+No administrator rights are needed.

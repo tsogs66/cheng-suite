@@ -1,0 +1,498 @@
+window.ChengProModules = window.ChengProModules || {};
+
+window.ChengProModules.home = {
+  title: 'Home',
+  async render(root) {
+    const active = ChengPro.vessel.getActive();
+    const vessels = ChengPro.vessel.getListSync();
+    const firstRun = !vessels.length;
+    /* Soft gate: when license is inactive, still show Home panels (nav soft-allows programs).
+       Only hide when a valid seat explicitly excludes Voyage/Tanks. */
+    const hasVoyage = moduleSoftAllowed('voyage');
+    const hasTanks = moduleSoftAllowed('tanks');
+    const hasConsPlan = moduleSoftAllowed('bunkerplan');
+    const hasBunkerPlan = moduleSoftAllowed('bunkeringplan');
+    const Dash = window.ChengProHomeDashboard;
+
+    root.innerHTML = `
+      ${firstRun ? `
+      <section class="panel">
+        <div class="form-actions">
+          <button type="button" class="btn primary" data-go="vessel">Set up this vessel</button>
+        </div>
+        <p class="hint" style="margin-top:10px">Start with the ship name and IMO. Home becomes an operational dashboard once a vessel is active.</p>
+      </section>` : ''}
+
+      <nav class="home-pane-nav" id="homePaneNav" aria-label="Home screens">
+        <button type="button" data-pane="voyage">Voyage</button>
+        <button type="button" data-pane="fuel">Fuel</button>
+        <button type="button" data-pane="tanks">Tanks</button>
+        <button type="button" data-pane="engine">Engine</button>
+      </nav>
+      <div class="home-panes" id="homePanes">
+      <section class="panel home-pane" id="homeVoyagePanel" data-pane="voyage">
+        <div class="section-head">
+          <h2>Voyage progress</h2>
+          <div class="sub" id="homeVoyageSub">${hasVoyage ? 'Loading…' : 'Voyage not on this license'}</div>
+        </div>
+        ${hasVoyage ? `
+        <div class="toggle-row" id="homeVoyageActions">
+          <button type="button" class="home-action" id="goVoyageFromHome" title="Open Voyage Chief">Voyage Chief</button>
+          <button type="button" class="home-action" id="goLogEntryFromHome" title="Open Log Entry">Log Entry</button>
+          ${hasConsPlan ? '<button type="button" class="home-action" id="goConsPlanFromHome" title="Open Consumption Plan">Consumption Plan</button>' : ''}
+        </div>
+        <div id="voyageProgressViz"></div>
+        <div class="home-voyage-strip" id="homeVoyageProgressStrip" hidden></div>` : `
+        <p class="home-warn">Voyage Chief is not on this license — ask the office to include it on your ChEng AIO key.</p>`}
+      </section>
+
+      <section class="panel home-pane" id="homeGaugesPanel" data-pane="fuel">
+        <div class="section-head">
+          <h2>Calculated ROB</h2>
+          <div class="sub">Opening vs Present from Voyage log</div>
+        </div>
+        <div class="toggle-row" style="margin-bottom:8px">
+          <button type="button" class="home-action" id="goRobFromHome" title="Open Voyage Chief ROB">ROB</button>
+        </div>
+        <div class="gauge-grid" id="fuelDualGauges"></div>
+      </section>
+
+      <section class="panel home-pane" id="homeTanksPanel" data-pane="tanks">
+        <div class="section-head">
+          <h2>Vessel tank overview</h2>
+          <div class="sub">Fuel tanks only</div>
+        </div>
+        ${hasTanks ? `
+        <div class="toggle-row home-tank-actions">
+          <button type="button" class="home-action" id="goTanksFromHome" title="Open Tank Chief">Tank Chief</button>
+          <button type="button" class="home-action" id="goMonitoringFromHome" title="Open Monitoring">Monitoring</button>
+          ${hasBunkerPlan ? '<button type="button" class="home-action" id="goBunkerPlanFromHome" title="Open Bunkering Plan">Bunkering Plan</button>' : ''}
+          <button type="button" class="home-action" id="rearrangeHomeTanks" title="Drag tanks on this overview only">Rearrange</button>
+          <button type="button" class="home-action" id="resetHomeTankLayout" hidden title="Put the overview back to the default port / starboard layout">Reset layout</button>
+        </div>
+        <p class="hint" id="homeTankRearrangeHint" hidden>Drag ⋮⋮ to place a tank on this overview. Monitoring and sounding lists stay as they are.</p>
+        <div class="cards-row" id="homeFuelSummary"></div>
+        <div class="tg-grid" id="homeFuelGrid"></div>` : `
+        <p class="home-warn">Tank Chief is not on this license — ask the office to include it on your ChEng AIO key.</p>`}
+      </section>
+      <section class="panel home-pane" id="homeEnginePanel" data-pane="engine">
+        <div class="section-head">
+          <h2>Engine</h2>
+          <div class="sub">Noon, performance, notes, oil record</div>
+        </div>
+        <p class="hint">Running hours, SFOC, CII and the latest noon stay on Noon report and Performance. This screen opens them.</p>
+        <div class="toggle-row">
+          <button type="button" class="home-action" data-go="performance">Performance</button>
+          <button type="button" class="home-action" data-go="notes">Notes</button>
+          <button type="button" class="home-action" data-go="eorb">e-ORB</button>
+          <button type="button" class="home-action" data-go="backup">Backup &amp; Sync</button>
+        </div>
+      </section>
+      </div>
+    `;
+
+    root.querySelectorAll('[data-go]').forEach((btn) => {
+      btn.onclick = () =>
+        window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: btn.dataset.go }));
+    });
+    const homePanes = root.querySelector('#homePanes');
+    root.querySelectorAll('#homePaneNav [data-pane]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const pane = root.querySelector('.home-pane[data-pane="' + btn.dataset.pane + '"]');
+        if (pane && homePanes) pane.scrollIntoView({ inline: 'start', block: 'nearest' });
+        root.querySelectorAll('#homePaneNav [data-pane]').forEach((b) => {
+          b.classList.toggle('on', b === btn);
+        });
+      });
+    });
+    root.querySelector('#goVoyageFromHome')?.addEventListener('click', () => ChengPro.openVoyage());
+    root.querySelector('#goLogEntryFromHome')?.addEventListener('click', () => ChengPro.openVoyage({ page: 'entry' }));
+    root.querySelector('#goRobFromHome')?.addEventListener('click', () => ChengPro.openVoyage({ page: 'rob' }));
+    root.querySelector('#goTanksFromHome')?.addEventListener('click', () => ChengPro.openTanks());
+    root.querySelector('#goMonitoringFromHome')?.addEventListener('click', () => ChengPro.openTanks({ page: 'fuel-report' }));
+    root.querySelector('#goConsPlanFromHome')?.addEventListener('click', () =>
+      window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'bunkerplan' })));
+    root.querySelector('#goBunkerPlanFromHome')?.addEventListener('click', () =>
+      window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'bunkeringplan' })));
+
+    let voyageSnap = null;
+
+    function paintVoyage() {
+      const viz = root.querySelector('#voyageProgressViz');
+      const sub = root.querySelector('#homeVoyageSub');
+      const strip = root.querySelector('#homeVoyageProgressStrip');
+      if (!hasVoyage || !Dash) return;
+      if (!voyageSnap || !voyageSnap.ok) {
+        if (sub) sub.textContent = 'No Voyage Chief data on this device yet';
+        if (viz) {
+          viz.innerHTML = `<div class="hint">Open Voyage Chief once for this vessel to populate progress and weather.</div>`;
+        }
+        if (Dash.renderVoyageProgressStrip) Dash.renderVoyageProgressStrip(strip, null);
+        const gauges = root.querySelector('#fuelDualGauges');
+        if (gauges) gauges.innerHTML = `<div class="hint">Open Voyage Chief to load fuel ROB gauges.</div>`;
+        return;
+      }
+      const total = voyageSnap.totalDistance;
+      if (sub) {
+        if (total > 0) {
+          sub.textContent = `${voyageSnap.departPort || 'Departure'} → ${voyageSnap.arrivePort || 'Arrival'} · ${Number(total).toLocaleString()} nm`;
+        } else {
+          sub.textContent = 'Set voyage distance in Voyage Setup';
+        }
+      }
+      Dash.renderVoyageProgressViz(viz, voyageSnap);
+      if (Dash.renderVoyageProgressStrip) Dash.renderVoyageProgressStrip(strip, voyageSnap);
+      Dash.renderFuelGauges(root.querySelector('#fuelDualGauges'), voyageSnap);
+    }
+
+    if (hasVoyage && window.ChengProVoyageBridge && typeof ChengProVoyageBridge.readHomeSnapshot === 'function') {
+      try {
+        voyageSnap = await ChengProVoyageBridge.readHomeSnapshot(active);
+      } catch (err) {
+        console.warn('Home voyage snapshot:', err);
+        voyageSnap = null;
+      }
+    }
+    paintVoyage();
+
+    if (hasTanks && active) {
+      try {
+        const bundle = await loadTankBundleForActive(active);
+        const fuelReport = bundle ? await loadFuelReportForBundle(bundle, active) : null;
+        const tankVesselId = (bundle && bundle.vessel && bundle.vessel.id)
+          || (bundle && bundle.id)
+          || '';
+        let rearranging = false;
+
+        function paintTankOverview() {
+          if (!Dash || !bundle) return;
+          Dash.renderFuelTankOverview(
+            root.querySelector('#homeFuelSummary'),
+            root.querySelector('#homeFuelGrid'),
+            bundle,
+            fuelReport,
+            { rearrange: rearranging, vesselId: tankVesselId }
+          );
+          syncTankLayoutButtons();
+        }
+
+        function syncTankLayoutButtons() {
+          const toggle = root.querySelector('#rearrangeHomeTanks');
+          const reset = root.querySelector('#resetHomeTankLayout');
+          if (toggle) {
+            toggle.textContent = rearranging ? 'Done' : 'Rearrange';
+            toggle.classList.toggle('on', rearranging);
+            toggle.setAttribute('aria-pressed', rearranging ? 'true' : 'false');
+          }
+          if (reset) {
+            const custom = Dash && typeof Dash.hasFuelGridLayout === 'function'
+              && Dash.hasFuelGridLayout(tankVesselId);
+            reset.hidden = !custom;
+          }
+          const hint = root.querySelector('#homeTankRearrangeHint');
+          if (hint) hint.hidden = !rearranging;
+        }
+
+        root.querySelector('#rearrangeHomeTanks')?.addEventListener('click', () => {
+          rearranging = !rearranging;
+          paintTankOverview();
+        });
+        root.querySelector('#resetHomeTankLayout')?.addEventListener('click', () => {
+          if (Dash && typeof Dash.clearFuelGridLayout === 'function') {
+            Dash.clearFuelGridLayout(tankVesselId);
+          }
+          paintTankOverview();
+        });
+        root.querySelector('#homeFuelGrid')?.addEventListener('chengpro:fuel-grid-layout', syncTankLayoutButtons);
+
+        if (Dash && bundle) {
+          paintTankOverview();
+        } else if (Dash) {
+          const grid = root.querySelector('#homeFuelGrid');
+          const summary = root.querySelector('#homeFuelSummary');
+          if (summary) summary.innerHTML = '';
+          if (grid) {
+            grid.innerHTML = `<div class="hint">No Tank Chief vessel matches ${esc(active.name || active.id)} yet (tried IMO / name ignoring MV). Open Tank Chief once for this ship.</div>`;
+          }
+        }
+      } catch (err) {
+        const grid = root.querySelector('#homeFuelGrid');
+        const summary = root.querySelector('#homeFuelSummary');
+        if (summary) summary.innerHTML = '';
+        if (grid) {
+          grid.innerHTML = `<div class="hint">Could not load Tank Chief data (${esc(err.message || 'offline')}).</div>`;
+        }
+      }
+    } else if (hasTanks && !active) {
+      const grid = root.querySelector('#homeFuelGrid');
+      if (grid) grid.innerHTML = `<div class="hint">Select an active vessel to see fuel tanks.</div>`;
+    }
+  },
+};
+
+/** Match Tank Chief / shell-local: license email isolates offline data under users/<slug>/. */
+function applyTankOfflineScope() {
+  try {
+    if (typeof StoreCore === 'undefined' || typeof StoreCore.setUserScope !== 'function') return;
+    if (!window.ChengLicense) return;
+    StoreCore.setUserScope({
+      email: ChengLicense.licenseEmail() || null,
+      master: !!ChengLicense.isMaster(),
+    });
+  } catch { /* ignore */ }
+}
+
+async function listTankVessels() {
+  applyTankOfflineScope();
+  /* Bundled offline: ChengProApi is patched by shell-local to LocalApi WITH scope. */
+  if (window.ChengProApi && ChengProApi.api) {
+    try {
+      const st = await ChengProApi.api('/tanks/api/status');
+      if (st && Array.isArray(st.vessels) && st.vessels.length) return st.vessels;
+    } catch { /* ignore */ }
+    try {
+      const data = await ChengProApi.api('/tanks/api/vessels');
+      const list = Array.isArray(data) ? data : ((data && data.vessels) || []);
+      if (list.length) return list;
+    } catch { /* fall through */ }
+  }
+  if (typeof LocalApi !== 'undefined' && LocalApi.start && LocalApi.handle) {
+    try {
+      await LocalApi.start();
+      applyTankOfflineScope();
+      const st = await LocalApi.handle('GET', '/api/status');
+      if (st.status < 400 && st.body && Array.isArray(st.body.vessels)) return st.body.vessels;
+      const list = await LocalApi.handle('GET', '/api/vessels');
+      if (list.status < 400 && list.body) {
+        return Array.isArray(list.body) ? list.body : (list.body.vessels || []);
+      }
+    } catch { /* ignore */ }
+  }
+  return [];
+}
+
+/** Candidate Tank folder ids for a shell vessel (legacy mv- prefix + slugify). */
+function tankIdCandidates(active) {
+  if (!active) return [];
+  const out = [];
+  const push = (id) => {
+    const s = String(id || '').trim();
+    if (!s || out.includes(s)) return;
+    out.push(s);
+  };
+  push(active.id);
+  push(active.voyageSlug);
+  push(active.slug);
+  if (active.id && /^mv-/i.test(active.id)) push(active.id.replace(/^mv-/i, ''));
+  else if (active.id) push('mv-' + active.id);
+  const slugFn = window.ChengProVoyageBridge && ChengProVoyageBridge.slugify;
+  if (typeof slugFn === 'function' && active.name) {
+    const core = slugFn(active.name);
+    push(core);
+    push('mv-' + core);
+  }
+  return out;
+}
+
+/**
+ * Map AIO shell vessel → Tank folder id via IMO, then slug/name (ignore MV),
+ * then legacy mv- folder aliases.
+ */
+async function resolveTankVesselId(active) {
+  if (!active) return null;
+  const vessels = await listTankVessels();
+  if (vessels.length && window.ChengProVoyageBridge
+      && typeof ChengProVoyageBridge.resolveFromList === 'function') {
+    const match = ChengProVoyageBridge.resolveFromList(vessels, active);
+    if (match && match.id) return match.id;
+  }
+  for (const id of tankIdCandidates(active)) {
+    if (vessels.some((v) => v.id === id)) return id;
+  }
+  /* List empty / unresolved — still try active id and aliases on load. */
+  return active.id || null;
+}
+
+
+async function loadFuelReport(vesselId) {
+  if (!vesselId) return null;
+  applyTankOfflineScope();
+  function usable(report) {
+    if (!report) return null;
+    const computed = report.computed || report;
+    if (computed && Array.isArray(computed.sections) && computed.sections.length) return report;
+    if (Array.isArray(report.sections) && report.sections.length) return report;
+    return null;
+  }
+  function withFormOnly(report) {
+    if (!report) return null;
+    if (usable(report)) return usable(report);
+    if (report.form) return { form: report.form, computed: report.computed || null };
+    return null;
+  }
+  async function fromServer() {
+    if (!(window.ChengProApi && ChengProApi.api)) return null;
+    try {
+      const viaApi = await ChengProApi.api('/tanks/api/vessels/' + encodeURIComponent(vesselId) + '/fuel-report');
+      const ok = usable(viaApi);
+      if (ok) return ok;
+      /* Form saved but not computed yet — ask the tanks module to compute. */
+      if (viaApi && viaApi.form) {
+        try {
+          const computed = await ChengProApi.api(
+            '/tanks/api/vessels/' + encodeURIComponent(vesselId) + '/fuel-report/compute',
+            { method: 'POST', body: { form: viaApi.form } }
+          );
+          const wrapped = computed && (computed.computed || computed);
+          if (usable({ computed: wrapped })) return { form: viaApi.form, computed: wrapped };
+        } catch { /* fall through */ }
+        return { form: viaApi.form, computed: viaApi.computed || null };
+      }
+      return withFormOnly(viaApi);
+    } catch { return null; }
+  }
+  async function fromDevice() {
+    if (!(typeof LocalApi !== 'undefined' && LocalApi.start && LocalApi.handle)) return null;
+    try {
+      await LocalApi.start();
+      applyTankOfflineScope();
+      const res = await LocalApi.handle('GET', '/api/vessels/' + encodeURIComponent(vesselId) + '/fuel-report');
+      const ok = usable(res && res.body);
+      if (res.status < 400 && ok) return ok;
+      if (res.status < 400 && res.body && res.body.form) {
+        try {
+          const cRes = await LocalApi.handle(
+            'POST',
+            '/api/vessels/' + encodeURIComponent(vesselId) + '/fuel-report/compute',
+            { form: res.body.form }
+          );
+          const wrapped = cRes && cRes.body && (cRes.body.computed || cRes.body);
+          if (cRes.status < 400 && usable({ computed: wrapped })) {
+            return { form: res.body.form, computed: wrapped };
+          }
+        } catch { /* fall through */ }
+        return { form: res.body.form, computed: (res.body && res.body.computed) || null };
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+  /* Read Monitoring from the database Tank Chief writes to, so the dashboard
+     shows the soundings on that page rather than the server's older copy. */
+  const order = tankDataOnDevice() ? [fromDevice, fromServer] : [fromServer, fromDevice];
+  for (const source of order) {
+    const report = await source();
+    if (report) return report;
+  }
+  return null;
+}
+
+/** Prefer the resolved tank folder id from the loaded bundle when asking for Monitoring totals. */
+async function loadFuelReportForBundle(bundle, active) {
+  const ids = [];
+  if (bundle && bundle.vessel && bundle.vessel.id) ids.push(bundle.vessel.id);
+  if (bundle && bundle.id) ids.push(bundle.id);
+  for (const id of tankIdCandidates(active || {})) ids.push(id);
+  const tried = new Set();
+  for (const id of ids) {
+    if (!id || tried.has(id)) continue;
+    tried.add(id);
+    try {
+      const report = await loadFuelReport(id);
+      if (report) return report;
+    } catch { /* try next */ }
+  }
+  /* Last resort: vessel bundle may already carry a Monitoring form. */
+  if (bundle && bundle.fuelReport) {
+    return { form: bundle.fuelReport, computed: bundle.fuelReport.computed || null };
+  }
+  return null;
+}
+
+async function loadTankBundle(vesselId) {
+  if (!vesselId) return null;
+  applyTankOfflineScope();
+  async function fromServer() {
+    if (!(window.ChengProApi && ChengProApi.api)) return null;
+    try {
+      const viaApi = await ChengProApi.api('/tanks/api/vessels/' + encodeURIComponent(vesselId));
+      if (viaApi && (viaApi.vessel || viaApi.tanks)) return viaApi;
+    } catch { /* fall through */ }
+    return null;
+  }
+  async function fromDevice() {
+    if (!(typeof LocalApi !== 'undefined' && LocalApi.start && LocalApi.handle)) return null;
+    try {
+      await LocalApi.start();
+      applyTankOfflineScope();
+      const res = await LocalApi.handle('GET', '/api/vessels/' + encodeURIComponent(vesselId));
+      if (res.status < 400 && res.body) return res.body;
+    } catch { /* ignore */ }
+    return null;
+  }
+  const order = tankDataOnDevice() ? [fromDevice, fromServer] : [fromServer, fromDevice];
+  for (const source of order) {
+    const bundle = await source();
+    if (bundle) return bundle;
+  }
+  return null;
+}
+
+/* The packaged phone reads the on-device copy. A page served by the server
+   reads that server. There is no database picker: Update to the newest of
+   both, and Pull, move the active vessel's files. */
+function tankDataOnDevice() {
+  if (typeof LocalApi === 'undefined' || typeof LocalApi.handle !== 'function') return false;
+  try { if (window.CHENG_PRO_BUNDLED) return true; } catch { /* ignore */ }
+  try {
+    if (window.ChengProBundled && ChengProBundled.isBundledClient && ChengProBundled.isBundledClient()) return true;
+  } catch { /* ignore */ }
+  try {
+    const cap = window.Capacitor;
+    if (cap && ((cap.isNativePlatform && cap.isNativePlatform())
+      || (cap.getPlatform && cap.getPlatform() !== 'web'))) return true;
+  } catch { /* ignore */ }
+  return typeof location !== 'undefined' && !/^https?:$/.test(location.protocol || '');
+}
+
+/** Resolve then try alias folder ids until a Tank bundle loads. */
+async function loadTankBundleForActive(active) {
+  if (!active) return null;
+  const tried = new Set();
+  const ordered = [];
+  const primary = await resolveTankVesselId(active);
+  if (primary) ordered.push(primary);
+  for (const id of tankIdCandidates(active)) ordered.push(id);
+
+  let lastErr = null;
+  for (const id of ordered) {
+    if (!id || tried.has(id)) continue;
+    tried.add(id);
+    try {
+      const bundle = await loadTankBundle(id);
+      if (bundle && (bundle.vessel || bundle.tanks)) return bundle;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return null;
+}
+
+function moduleSoftAllowed(moduleId) {
+  if (!window.ChengLicense) return true;
+  try {
+    const ent = ChengLicense.loadEntitlement();
+    if (!ChengLicense.isValid(ent)) return true;
+    return ChengLicense.moduleAllowed(moduleId, ent);
+  } catch {
+    return true;
+  }
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
