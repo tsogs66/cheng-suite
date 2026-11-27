@@ -255,10 +255,11 @@ const FuelReport = (() => {
     await loadConversion();
     recompute();
 
+    const aioHead = typeof isAioEmbedded === 'function' && isAioEmbedded();
     main.innerHTML += `${bunkerNavHtml('fuel-report')}<div class="page-head no-print">
       <div>
-        <h1>Fuel Oil Report</h1>
-        <div class="desc">Tank condition sheet — soundings, VCF/WCF and weight in air per fuel tank</div>
+        <h1>${aioHead ? 'Soundings' : 'Fuel Oil Report'}</h1>
+        <div class="desc">${aioHead ? 'Fuel oil report · Monitoring · weight in air · ASTM 54B / 56' : 'Tank condition sheet — soundings, VCF/WCF and weight in air per fuel tank'}</div>
       </div>
       <div class="btn-row">
         <button class="btn primary" id="fr-print-save">PRINT &amp; SAVE</button>

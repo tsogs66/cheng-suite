@@ -72,6 +72,11 @@ assert.strictEqual(ChengNav.wantsPhonePanes({
   innerWidth: 800, innerHeight: 1280,
   matchMedia: () => ({ matches: true }),
   navigator: { userAgent: 'Windows' },
+}), true);
+assert.strictEqual(ChengNav.wantsPhonePanes({
+  innerWidth: 1366, innerHeight: 768,
+  matchMedia: () => ({ matches: true }),
+  navigator: { userAgent: 'Windows' },
 }), false);
 assert.strictEqual(ChengNav.wantsShortLandscape({
   innerWidth: 800, innerHeight: 360,

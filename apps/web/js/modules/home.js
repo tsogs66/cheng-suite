@@ -24,11 +24,12 @@ window.ChengProModules.home = {
       </section>` : ''}
 
       <nav class="home-pane-nav" id="homePaneNav" aria-label="Home screens">
-        <button type="button" data-pane="voyage">Voyage</button>
+        <button type="button" data-pane="voyage" class="on">Voyage</button>
         <button type="button" data-pane="fuel">Fuel</button>
         <button type="button" data-pane="tanks">Tanks</button>
         <button type="button" data-pane="engine">Engine</button>
       </nav>
+      <div class="home-pane-dots" id="homePaneDots" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i></div>
       <div class="home-panes" id="homePanes">
       <section class="panel home-pane" id="homeVoyagePanel" data-pane="voyage">
         <div class="section-head">
@@ -96,15 +97,29 @@ window.ChengProModules.home = {
         window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: btn.dataset.go }));
     });
     const homePanes = root.querySelector('#homePanes');
+    const paneNames = ['voyage', 'fuel', 'tanks', 'engine'];
+    function markPane(name) {
+      root.querySelectorAll('#homePaneNav [data-pane]').forEach((b) => {
+        b.classList.toggle('on', b.dataset.pane === name);
+      });
+      root.querySelectorAll('#homePaneDots i').forEach((dot, n) => {
+        dot.classList.toggle('on', paneNames[n] === name);
+      });
+    }
     root.querySelectorAll('#homePaneNav [data-pane]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const pane = root.querySelector('.home-pane[data-pane="' + btn.dataset.pane + '"]');
         if (pane && homePanes) pane.scrollIntoView({ inline: 'start', block: 'nearest' });
-        root.querySelectorAll('#homePaneNav [data-pane]').forEach((b) => {
-          b.classList.toggle('on', b === btn);
-        });
+        markPane(btn.dataset.pane);
       });
     });
+    if (homePanes) {
+      homePanes.addEventListener('scroll', () => {
+        const w = homePanes.clientWidth || 1;
+        const idx = Math.round(homePanes.scrollLeft / w);
+        if (paneNames[idx]) markPane(paneNames[idx]);
+      }, { passive: true });
+    }
     root.querySelector('#goVoyageFromHome')?.addEventListener('click', () => ChengPro.openVoyage());
     root.querySelector('#goLogEntryFromHome')?.addEventListener('click', () => ChengPro.openVoyage({ page: 'entry' }));
     root.querySelector('#goRobFromHome')?.addEventListener('click', () => ChengPro.openVoyage({ page: 'rob' }));
