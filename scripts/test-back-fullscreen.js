@@ -8,9 +8,9 @@ const shell = fs.readFileSync(path.join(root, 'apps/web/js/shell.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'apps/web/index.html'), 'utf8');
 const java = fs.readFileSync(path.join(root, 'scripts/apply-android-print-bridge.js'), 'utf8');
 
-assert.match(shell, /history\.pushState\(\{ aioModule: module \}/, 'each page opened is a history entry');
+assert.match(shell, /history\.pushState\(\{ aioModule: module, aioPage: page \}/, 'each page opened is a history entry');
 assert.match(shell, /addEventListener\('popstate'/, 'Back is handled');
-assert.match(shell, /navigate\(st\.aioModule, \{ fromHistory: true \}\)/, 'Back returns to the page before');
+assert.match(shell, /navigate\(st\.aioModule, \{ fromHistory: true, force: !!page, page: page \|\| undefined \}\)/, 'Back returns to the page before');
 assert.match(shell, /Press Back again to exit/, 'the first page asks before exiting');
 assert.match(shell, /if \(!\(opts && opts\.fromHistory\)\) recordPage\(next\)/, 'going back does not add another entry');
 assert.match(shell, /chengAioFullscreen/, 'full screen is remembered');
