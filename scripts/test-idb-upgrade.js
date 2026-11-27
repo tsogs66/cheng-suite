@@ -128,6 +128,8 @@ function waitFor(url, tries) {
   proc = spawn(chrome, [
     '--headless=new',
     '--disable-gpu',
+    '--no-sandbox',
+    '--disable-dev-shm-usage',
     '--no-first-run',
     '--user-data-dir=' + dir,
     '--remote-debugging-port=0',
@@ -136,12 +138,22 @@ function waitFor(url, tries) {
   let log = '';
   proc.stderr.on('data', (b) => { log += b.toString(); });
   proc.stdout.on('data', (b) => { log += b.toString(); });
+  /* Chrome sometimes prints the port only to DevToolsActivePort, and slowly. */
   const devtools = await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('no devtools port\n' + log)), 15000);
+    const started = Date.now();
     const scan = () => {
       const m = log.match(/DevTools listening on (ws:\/\/\S+)/);
-      if (m) { clearTimeout(t); resolve(m[1]); return; }
-      setTimeout(scan, 100);
+      if (m) return resolve(m[1]);
+      try {
+        const lines = fs.readFileSync(path.join(dir, 'DevToolsActivePort'), 'utf8').trim().split(/\r?\n/);
+        if (lines[0] && /^\d+$/.test(lines[0])) {
+          return resolve('ws://127.0.0.1:' + lines[0] + (lines[1] || '/devtools/browser'));
+        }
+      } catch (e) { /* file not written yet */ }
+      if (Date.now() - started > 30000) {
+        return reject(new Error('no devtools port\n' + log.slice(-2000)));
+      }
+      setTimeout(scan, 150);
     };
     scan();
   });
