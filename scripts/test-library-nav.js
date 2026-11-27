@@ -68,4 +68,10 @@ assert.ok(station.includes('.bn-more-item[data-module="voyage"] .nav-plate'), 'M
 assert.ok(station.includes('.bottom-item[data-touch="noon"] .bn-svg'), 'noon keeps its own plate');
 assert.ok(!/bottom-item \.bn-svg \{[^}]*background:\s*transparent/.test(station), 'bottom bar icons are not flattened');
 assert.ok(station.includes('linear-gradient(165deg'), 'icon plates keep a bevel');
+const pages = fs.readFileSync(path.join(root, 'apps/web/css/station-pages.css'), 'utf8');
+assert.ok(!pages.includes('top: 100px'), 'monitoring titles are not pushed down over the first tanks');
+assert.ok(pages.includes('top: 56px'), 'sheet titles clear the tab strip');
+assert.ok(pages.includes('html.station table.fr-sheet'), 'sounding sheets are named');
+assert.ok(/html\.station table\.fr-sheet[\s\S]{0,180}width:\s*100%/.test(pages), 'sounding sheet fills the window');
+assert.ok(pages.includes('min-width: 7.5em'), 'the method box fits ULLAGE');
 console.log('library nav ok');

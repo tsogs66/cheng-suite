@@ -1,6 +1,28 @@
 # Audit of ChEng Suite v0.3.383 against v1
 
-Phase 1 only. Nothing here was merged or released, and no product code was changed.
+Nothing here is merged or released.
+
+A later pass on this branch put a test entitlement in the browser only (`localStorage` key `chengAioLicenseEntitlement`, sku `cheng-aio`, `master: true`, grace through 2027). No license code in the app was changed. With that key, `ChengLicense.isValid` is true and the module list is home, voyage, spares, eca, tanks, performance, eorb, bunkerplan, bunkeringplan, vessel, backup, license, about.
+
+## Licensed pass (this branch)
+
+All 46 visible shell destinations, the 48 menu-parity rows that those buttons cover, plus the CE pages that are their own buttons (ROB reconciliation, limit alerts, voyage summary, pre-inspection), left the “Activate a license” wall and rendered their own screen and buttons. That is the core open-and-show check. Destructive delete and a full file export were not run against Giorgis.
+
+Actions that went past opening the screen:
+
+| Action | v1 | v2 | Status |
+| --- | --- | --- | --- |
+| NO.1 H.F.O. TANK (P), ullage 150, temp 45, SG 0.9850, drafts and heel 0 | measured 61.353, weight 59.116, VCF 0.9793, 100% 463.5 | the same four figures | Pass. An earlier mismatch was leftover draft/heel on one side, not a different formula. |
+| Monitoring save | — | Toast “Report saved” | Pass |
+| Tank condition, after bunkering, bunker summary prints | HTML built on Tank Chief 2.2.83 | HTML built on the suite | Both generate. Headers and the ASTM 54/56 labels match. Live header fields (time, drafts) differ because the two data dirs do not share one saved report. v2 annex print omits the In use column; that is the one source difference in `printAnnexPage`. |
+| Bunkering plan print button | id is `bp-print-only` | same | Not captured in the first hook (it looked for `bp-print`). Source of the ten bunkering print functions is byte-identical. |
+| Voyage Print & Save with no summary open | — | Was a silent return. Now toasts “Open a voyage summary before printing”. | Fixed on this branch |
+| Sounding sheet at 1366 and 800 | 113×38 px box, table 1304 px, word ULLAGE | After the fix: 120×44 at 1366, table 1276 px in a 1366 px page, no sideways scroll. At 800 the box is 95×44, ULLAGE still fits, and the page scrolls sideways (table 1047 px). | Fixed on this branch |
+
+## Fixes on this branch
+
+- Sounding sheet uses v1 column rules again: `table.fr-sheet { width: 100% }`, number boxes at least 58 px (temp 46, SG 68), method select at least 7.5 em so ULLAGE is fully visible, 44 px row height from 600 px up. The 100 px title offset is gone; titles sit at 56 px, under the tab strip, and the first row is not covered. A window narrower than the sheet scrolls the page sideways.
+- `btnPrintVoyageSummary` tells you when there is nothing to print, in both `voyage_manager.html` and `index.html`.
 
 This pass ran the programs. It did not stop at “the menu opens.”
 

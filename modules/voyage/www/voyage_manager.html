@@ -26545,13 +26545,20 @@ document.getElementById('n2nIncludeArchived')?.addEventListener('change', async 
  * Commit first, then print, so the paper and the entry always agree.
  */
 document.getElementById('btnPrintVoyageSummary').addEventListener('click', async ()=>{
-  if (!currentVsEntryId) return;
+  if (!currentVsEntryId) {
+    showToast('Open a voyage summary before printing');
+    return;
+  }
   const id = currentVsEntryId;
   /* Hold sync before save — cascade can take longer than the 1.2s auto-sync delay. */
   beginPrintHold();
   try {
     const saved = await saveOpenVoyageSummary({ close: false });
-    if (!saved) { endPrintHold(); return; }
+    if (!saved) {
+      endPrintHold();
+      showToast('Voyage summary was not saved, so it was not printed');
+      return;
+    }
     showToast('Voyage report saved');
     printVoyageSummary(id);
   } catch (err) {
