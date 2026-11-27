@@ -258,24 +258,32 @@ window.ChengProModules = window.ChengProModules || {};
         <button type="button" class="btn" id="ceSaveRules">Save tolerance</button>
         <button type="button" class="btn primary" id="ceSubmitNoon">Submit noon</button>
       </div>
-      <div class="table-scroll"><table class="ce-table">
+      <div class="table-scroll"><table class="ce-table ce-cards">
         <thead><tr><th>Grade</th><th>Noon</th><th>Sounded</th><th>BDN</th><th>e-ORB</th><th>Difference</th><th></th></tr></thead>
-        <tbody>${recon.length ? recon.map((r) => `<tr>
-          <td>${esc(r.grade)}</td><td>${fmt(r.noonMt)}</td><td>${fmt(r.soundedMt)}</td>
-          <td>${fmt(r.bdnMt)}</td><td>${fmt(r.orbMt)}</td>
-          <td class="${r.status === 'warn' ? 'ce-warn' : ''}">${fmt(r.deltaMt)}${r.deltaPct != null ? ' (' + r.deltaPct + '%)' : ''}</td>
-          <td>${r.status === 'warn' ? 'Outside tolerance' : r.status === 'ok' ? 'Within tolerance' : 'Incomplete'}</td>
-        </tr>`).join('') : '<tr><td colspan="7">No noon or sounding figures on this device yet.</td></tr>'}</tbody>
+        <tbody>${recon.length ? recon.map((r) => {
+          const badge = r.status === 'warn' ? 'Outside tolerance' : r.status === 'ok' ? 'OK' : 'Incomplete';
+          const desk = r.status === 'warn' ? 'Outside tolerance' : r.status === 'ok' ? 'Within tolerance' : 'Incomplete';
+          const diff = fmt(r.deltaMt) + (r.deltaPct != null ? ' (' + r.deltaPct + '%)' : '');
+          return `<tr>
+          <th scope="row" class="ce-card-head">${esc(r.grade)}<span class="ce-badge ce-badge-${esc(r.status)}">${esc(badge)}</span></th>
+          <td data-label="Noon">${fmt(r.noonMt)}</td>
+          <td data-label="Sounded">${fmt(r.soundedMt)}</td>
+          <td data-label="BDN">${fmt(r.bdnMt)}</td>
+          <td data-label="e-ORB">${fmt(r.orbMt)}</td>
+          <td class="ce-card-wide ${r.status === 'warn' ? 'ce-warn' : ''}" data-label="Difference">${diff}</td>
+          <td class="ce-status">${esc(desk)}</td>
+        </tr>`;
+        }).join('') : '<tr class="ce-empty"><td colspan="7">No noon or sounding figures on this device yet.</td></tr>'}</tbody>
       </table></div>
       <h3>Audit</h3>
       <p class="hint">A submitted noon stays as it was. A correction is a new version. The earlier one is hidden from the log and kept here.</p>
-      <div class="table-scroll"><table class="ce-table">
+      <div class="table-scroll"><table class="ce-table ce-cards ce-audit">
         <thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
         <tbody>${ctx.audit.length ? ctx.audit.slice().reverse().map((a) => `<tr>
-          <td>${esc(a.at || '')}</td>
-          <td>${esc(a.actor || (a.needsName ? 'Name needed' : ''))}</td>
-          <td>${esc(a.reason || a.entity || '')}</td>
-        </tr>`).join('') : '<tr><td colspan="3">No corrections yet.</td></tr>'}</tbody>
+          <th scope="row" class="ce-card-head">${esc(a.at || '')}</th>
+          <td data-label="Who">${esc(a.actor || (a.needsName ? 'Name needed' : ''))}</td>
+          <td data-label="What">${esc(a.reason || a.entity || '')}</td>
+        </tr>`).join('') : '<tr class="ce-empty"><td colspan="3">No corrections yet.</td></tr>'}</tbody>
       </table></div>
     </section>`;
     root.querySelector('#ceSaveRules').onclick = async () => {
@@ -410,9 +418,16 @@ window.ChengProModules = window.ChengProModules || {};
     root.innerHTML = `<section class="panel ce-page" data-ce-ready="summary">
       ${pageHead('Superintendent voyage summary', 'Consumption, ROB, bunker')}
       <p class="hint">${esc(sheet.source)}</p>
-      <div class="table-scroll"><table class="ce-table">
+      <div class="table-scroll"><table class="ce-table ce-cards ce-summary">
         <thead><tr>${table[0].map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
-        <tbody>${table.slice(1).map((row) => `<tr>${row.map((c) => `<td>${esc(fmt(c))}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="6">Nothing to summarise yet.</td></tr>'}</tbody>
+        <tbody>${table.slice(1).length ? table.slice(1).map((row) => `<tr>
+          <td class="ce-section">${esc(fmt(row[0]))}</td>
+          <th scope="row" class="ce-card-head">${esc(fmt(row[1]))}<span class="ce-badge">${esc(fmt(row[0]))}</span></th>
+          <td data-label="Planned or noon">${esc(fmt(row[2]))}</td>
+          <td data-label="Actual or sounded">${esc(fmt(row[3]))}</td>
+          <td class="ce-card-wide" data-label="Difference">${esc(fmt(row[4]))}</td>
+          <td class="ce-card-wide" data-label="Note">${esc(fmt(row[5]))}</td>
+        </tr>`).join('') : '<tr class="ce-empty"><td colspan="6">Nothing to summarise yet.</td></tr>'}</tbody>
       </table></div>
       <button type="button" class="btn primary" id="ceXlsx">Export Excel</button>
     </section>`;

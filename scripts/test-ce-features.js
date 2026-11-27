@@ -166,6 +166,13 @@ assert.ok(!tooEarly.some((a) => a.id === 'eca'));
   const ceUi = read('apps/web/js/modules/ce.js');
   assert.doesNotMatch(ceUi, /(^|[^.\w])prompt\s*\(/);
   assert.match(ceUi, /Chief Engineer/);
+  assert.match(ceUi, /data-label="Noon"/);
+  assert.match(ceUi, /data-label="Sounded"/);
+  assert.match(ceUi, /ce-card-wide/);
+  const ceCss = read('apps/web/css/ce.css');
+  assert.match(ceCss, /@media \(max-width: 599px\), \(max-height: 500px\) and \(orientation: landscape\)/);
+  assert.match(ceCss, /\.ce-badge \{ display: none; \}/);
+  assert.match(ceCss, /td\.ce-card-wide \{ grid-column: 1 \/ -1; \}/);
 
   const backup = read('apps/web/js/modules/backup.js');
   assert.match(backup, /checkSuite/);

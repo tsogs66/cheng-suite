@@ -18,6 +18,7 @@
 }
 .ce-table { width: max-content; min-width: 100%; border-collapse: collapse; }
 .ce-table th, .ce-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); white-space: nowrap; }
+.ce-badge { display: none; }
 .ce-warn { color: #e7a15a; font-weight: 650; }
 .ce-draft {
   position: fixed;
@@ -31,6 +32,106 @@
   color: #d5e2f0;
 }
 html.use-bottom-nav .ce-draft { bottom: 76px; }
+/* Phone only — the same breakpoint as the sounding cards. Tablet and Windows keep the table. */
+@media (max-width: 599px), (max-height: 500px) and (orientation: landscape) {
+  html.station .table-scroll > table.ce-cards {
+    min-width: 0;
+    width: 100%;
+    display: block;
+  }
+  html.station table.ce-cards thead { display: none; }
+  html.station table.ce-cards tbody { display: block; }
+  html.station table.ce-cards tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 8px;
+    margin: 0 0 8px;
+    padding: 8px;
+    border: 1px solid var(--line-strong, rgba(255,255,255,0.16));
+    border-radius: 6px;
+    background: #13202b;
+  }
+  html.station.bright table.ce-cards tbody tr { background: #f7f3ea; }
+  html.station table.ce-cards tbody th,
+  html.station table.ce-cards tbody td {
+    display: block;
+    width: auto;
+    min-width: 0;
+    position: static;
+    white-space: normal;
+    padding: 4px 0;
+    border: 0;
+    background: transparent;
+  }
+  html.station table.ce-cards .ce-card-head {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 650;
+    padding: 0 0 6px;
+  }
+  html.station table.ce-cards .ce-badge {
+    display: inline-block;
+    flex: none;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--line-strong, rgba(255,255,255,0.2));
+    color: var(--muted, #9ab);
+  }
+  html.station table.ce-cards .ce-badge-warn {
+    color: #e7a15a;
+    border-color: rgba(231, 161, 90, 0.7);
+  }
+  html.station table.ce-cards .ce-badge-ok {
+    color: #8dcea8;
+    border-color: rgba(141, 206, 168, 0.7);
+  }
+  html.station table.ce-cards td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted, #9ab);
+  }
+  html.station table.ce-cards td.ce-card-wide { grid-column: 1 / -1; }
+  html.station table.ce-cards td.ce-status,
+  html.station table.ce-summary td.ce-section { display: none; }
+  html.station table.ce-cards tr.ce-empty { display: block; }
+  html.station table.ce-cards tr.ce-empty td { grid-column: 1 / -1; }
+  html.phone-panes .main:has(.ce-page) {
+    overflow-y: auto;
+    max-height: calc(100dvh - var(--topbar-h, 56px) - var(--bottom-h, 64px));
+  }
+  html.phone-panes .main > .ce-page {
+    overflow: visible;
+    height: auto;
+    max-height: none;
+    flex: 0 0 auto;
+  }
+  html.phone-panes .ce-page .table-scroll {
+    overflow: visible;
+    flex: 0 0 auto;
+    height: auto;
+    max-height: none;
+  }
+}
 @media print {
   .ce-banner, .ce-lock-bar, .ce-draft, #ceAlertBanner, #ceDraftLine, #frDraftLine, #bpDraftLine { display: none !important; }
+  .ce-badge { display: none !important; }
+  html.station table.ce-cards { display: table; min-width: 0; width: auto; }
+  html.station table.ce-cards thead { display: table-header-group; }
+  html.station table.ce-cards tbody { display: table-row-group; }
+  html.station table.ce-cards tr { display: table-row; }
+  html.station table.ce-cards th,
+  html.station table.ce-cards td { display: table-cell; }
+  html.station table.ce-cards td.ce-status,
+  html.station table.ce-summary td.ce-section { display: table-cell; }
 }
