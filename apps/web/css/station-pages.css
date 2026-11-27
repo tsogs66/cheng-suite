@@ -79,16 +79,22 @@ html.station .scroll-x {
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
 }
-html.station table.fr-sheet,
 html.station table.data-table,
 html.station table.tank-table,
 html.station table.excel-table,
 html.station table.calib-table,
 html.station table.leg-table,
-html.station .table-scroll > table,
-html.station .scroll-x > table {
+html.station .table-scroll > table:not(.fr-sheet),
+html.station .scroll-x > table:not(.fr-sheet) {
   min-width: 720px;
   width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+html.station table.fr-sheet,
+html.station .scroll-x > table.fr-sheet {
+  width: 100%;
+  min-width: 0;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -130,6 +136,21 @@ html.station table input,
 html.station table select {
   min-width: 72px;
 }
+html.station table.fr-sheet tbody td input,
+html.station table.fr-sheet tbody td select {
+  width: 100%;
+  min-width: 58px;
+  max-width: none;
+  box-sizing: border-box;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+html.station table.fr-sheet tbody td select {
+  text-align: left;
+  min-width: 7.5em;
+}
+html.station table.fr-sheet tbody td input.fr-narrow { min-width: 46px; }
+html.station table.fr-sheet tbody td input.fr-wide { min-width: 68px; }
 
 /* The suite already has a header. Voyage Chief and Tank Chief keep theirs only when they run alone. */
 html.station.chengaio-embed .masthead,
@@ -287,19 +308,60 @@ html.station button.primary {
 
 .fr-more-btn { display: none; }
 
-/* The Plan / Monitoring / After / Summary strip sticks to the top.
-   Column titles stick just under it, so a scroll does not hide them. */
+/* The Plan / Monitoring / After / Summary strip sticks to the top of the page.
+   Column titles sit above row 1, then stick just under that strip. */
 html.station .bk-nav {
   z-index: 8;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
   background: #0b1218;
 }
 html.station.bright .bk-nav { background: #e6e0d2; }
-html.station:has(.bk-nav) table thead th {
-  top: 100px;
+html.station:has(.bk-nav) .scroll-x thead th,
+html.station:has(.bk-nav) .table-scroll thead th {
+  top: 56px;
 }
 
 /* Tablet and Windows: the same columns as v1, with the station colours.
    Headers wrap so a column stays near its v1 width. A wide sheet scrolls in .scroll-x. */
+@media (min-width: 600px) and (min-height: 501px) {
+  /* The panel must not clip the sheet. The page scroller is what moves,
+     so a title offset cannot land on the first tanks, and a narrow window
+     can still slide sideways. */
+  html.station .fr-section.form-panel { overflow: visible; }
+  html.station .table-scroll,
+  html.station .scroll-x {
+    overflow: visible;
+    width: auto;
+    max-width: none;
+  }
+  /* Voyage Chief and the suite shell also carry class station, and they scroll
+     the document. Only Tank Chief has .app-shell. Locking every station body
+     made a log entry unscrollable once the flowmeter rows appeared. */
+  html.station:has(.app-shell),
+  html.station:has(.app-shell) body { height: 100%; overflow: hidden; }
+  html.station:has(.app-shell) .app-shell {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+  html.station:has(.app-shell) .workspace {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+  html.station:has(.app-shell) .main {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    scrollbar-width: auto;
+    scrollbar-color: #e2a84a #1a2834;
+  }
+  html.station:has(.app-shell) .main:has(table.fr-sheet) { overflow-x: auto; }
+}
 @media (min-width: 600px) {
   html.station .scroll-x > table.fr-sheet thead th,
   html.station table.fr-sheet thead th {
