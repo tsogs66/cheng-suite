@@ -20,6 +20,13 @@ check('17-11-2026, 17/11/26, 17 NOV 2026 and NOV 17 2026 are one date', () => {
   assert.strictEqual(G.canonDate('17 NOVEMBER 2026'), '17/11/2026');
   assert.strictEqual(G.canonDate('NOV 17 2026'), '17/11/2026');
   assert.strictEqual(G.canonDate('13 NOVEMBER 2026'), '13/11/2026');
+  assert.strictEqual(G.canonDate('13 NOVEMBER 126'), '13/11/2026');
+  assert.strictEqual(G.canonDate('17 NOV 26'), '17/11/2026');
+});
+check('a 2-digit exhaust reading is reranked to the 3-digit figure in range', () => {
+  assert.strictEqual(G.rerank('exh:5', ['28', '280']), '280');
+  assert.strictEqual(G.rerank('exh:5', ['580']), '580');
+  assert.strictEqual(G.rerank('rack:4', ['57']), '57');
 });
 check('a date and a time on one line stay together', () => {
   assert.strictEqual(G.canonDateTime('17 - 11 - 2026 12.00'), '17/11/2026 12:00');

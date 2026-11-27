@@ -36,26 +36,51 @@
   }
 
   /** A date written as 17-11-2026, 17/11/26, 17 NOV 2026, NOV 17 2026 or 13 NOVEMBER 2026. */
-  function canonDate(raw) {
-    var t = String(raw || '').toUpperCase().replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
-    if (!t) return '';
-    var num = t.match(/(\d{1,2})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{2,4})/);
-    if (num) return dateFromParts(num[1], num[2], num[3]);
-    var bits = t.split(/[\s/-]+/).filter(Boolean);
+  function nearYear(year, opts) {
+    opts = opts || {};
+    var nowY = opts.year == null ? 2026 : +opts.year;
+    var fallback = opts.defaultYear == null ? nowY : +opts.defaultYear;
+    if (year == null || year === '') return String(fallback);
+    var y = String(year).replace(/\D/g, '');
+    if (!y) return String(fallback);
+    if (y.length === 4 && Math.abs(+y - nowY) <= 2) return y;
+    if (y.length === 2 && Math.abs(2000 + (+y) - nowY) <= 2) return String(2000 + (+y));
+    var tail = y.slice(-2);
+    if (tail.length === 2 && Math.abs(2000 + (+tail) - nowY) <= 2) return String(2000 + (+tail));
+    return String(fallback);
+  }
+
+  function parseDateBits(bits, opts) {
     var day = '', month = 0, year = '';
     bits.forEach(function (b) {
       if (MONTHS[b]) { month = MONTHS[b]; return; }
       if (/^\d{4}$/.test(b)) { year = b; return; }
-      if (!/^\d{1,2}$/.test(b)) return;
+      if (!/^\d{1,3}$/.test(b)) return;
       if (!day) day = b;
       else if (!month && +b >= 1 && +b <= 12) month = +b;
       else if (!year) year = b;
     });
-    if (!day || !month || !year) return '';
-    return dateFromParts(day, month, year);
+    if (!day || !month) return '';
+    return dateFromParts(day, month, nearYear(year, opts));
   }
 
-  function canonDateTime(raw) {
+  function canonDate(raw, opts) {
+    var t = String(raw || '').toUpperCase().replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!t) return '';
+    var num = t.match(/(\d{1,2})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{2,4})/);
+    if (num) return dateFromParts(num[1], num[2], nearYear(num[3], opts));
+    var bits = t.split(/[\s/-]+/).filter(Boolean);
+    var whole = parseDateBits(bits, opts);
+    if (whole) return whole;
+    /* a printed label often sits in the same crop; take the first window that is a date */
+    for (var i = 0; i < bits.length; i++) {
+      var win = parseDateBits(bits.slice(i, i + 4), opts);
+      if (win) return win;
+    }
+    return '';
+  }
+
+  function canonDateTime(raw, opts) {
     var t = String(raw || '').replace(/\s+/g, ' ').trim();
     if (!t) return '';
     /* time is the last clock-like token: 1200H, 12.00, 12:00, 1400 */
@@ -68,7 +93,7 @@
       var end = t.match(/(\d{3,4})\s*$/);
       if (end && canonTime(end[1])) { time = canonTime(end[1]); t = t.slice(0, end.index).trim(); }
     }
-    var date = canonDate(t);
+    var date = canonDate(t, opts);
     if (date && time) return date + ' ' + time;
     return date || time;
   }
@@ -100,13 +125,66 @@
     flags = flags || {};
     if (flags.emptyWord && (kind === 'number' || kind === 'int')) return '0';
     var t = String(text || '').trim();
+    if (/^empty$/i.test(t) && (kind === 'number' || kind === 'int')) return '0';
     if (!t) return '';
     if (kind === 'time') return canonTime(t);
-    if (kind === 'date') return canonDate(t);
-    if (kind === 'datetime') return canonDateTime(t);
+    if (kind === 'date') return canonDate(t, flags);
+    if (kind === 'datetime') return canonDateTime(t, flags);
     if (kind === 'pair') return canonPair(t);
     if (kind === 'int') return t.replace(/\D/g, '');
     return t;
+  }
+
+  /** What a field is allowed to hold, so a beam of readings can be ranked. */
+  function fieldSpec(key) {
+    if (/^exh:/.test(key) || /^t:\d+:(in|out)$/.test(key)) return { kind: 'int', min: 100, max: 650, digits: 3 };
+    if (/^t:\d+:rpm$/.test(key)) return { kind: 'int', min: 1000, max: 99999, digits: 5 };
+    if (/^rack:/.test(key) || key === 'pumpMark' || key === 'windBft') return { kind: 'int', min: 0, max: 100, digits: 2 };
+    if (/^cm:/.test(key)) return { kind: 'int', min: 0, max: 2000 };
+    if (key === 'fwRob') return { kind: 'pair' };
+    if (key === 'datetime') return { kind: 'datetime' };
+    if (key === 'date') return { kind: 'date' };
+    if (key === 'time') return { kind: 'time' };
+    if (/^fm:|:hrs$|:svc$/.test(key)) return { kind: 'int', min: 0 };
+    return { kind: 'number' };
+  }
+
+  function candidateScore(key, text, opts) {
+    opts = opts || {};
+    var spec = fieldSpec(key);
+    var raw = String(text || '').trim();
+    if (/^empty$/i.test(raw) && (spec.kind === 'int' || spec.kind === 'number')) raw = '0';
+    var value = apply(spec.kind === 'int' ? 'int' : spec.kind, raw, opts);
+    if (value === '' && raw !== '') return { value: '', score: -1 };
+    var score = 1;
+    if (spec.kind === 'int' || spec.kind === 'number') {
+      var v = parseFloat(value);
+      if (!Number.isFinite(v)) return { value: value, score: -1 };
+      if (spec.min != null && v < spec.min) score -= 2;
+      if (spec.max != null && v > spec.max) score -= 2;
+      if (spec.digits && String(Math.round(v)).length !== spec.digits && spec.kind === 'int') score -= 1.5;
+      var prev = opts.previous && opts.previous[key];
+      if (prev != null && prev !== '' && /^fm:|:hrs$|:svc$|^t:\d+:rpm$/.test(key)) {
+        var p = parseFloat(prev);
+        if (Number.isFinite(p) && v + 0.05 < p) score -= 3;
+        else if (Number.isFinite(p)) score += 0.4;
+      }
+    }
+    if ((spec.kind === 'date' || spec.kind === 'datetime') && value) score += 1;
+    if (spec.kind === 'time' && value) score += 1;
+    if (spec.kind === 'pair' && value && value.indexOf('/') >= 0) score += 1;
+    return { value: value, score: score };
+  }
+
+  /** Pick the reading that best fits the field. `cands` are raw strings, best first from the recognizer. */
+  function rerank(key, cands, opts) {
+    var best = { value: '', score: -1e9 };
+    (cands || ['']).forEach(function (c, i) {
+      var s = candidateScore(key, c, opts);
+      s.score -= i * 0.05;
+      if (s.score > best.score) best = s;
+    });
+    return best.value;
   }
 
   /** A sounding above the tank, a counter that went backwards, or a ROB that jumped. */
@@ -141,7 +219,7 @@
     return g === w;
   }
 
-  var api = { canonTime: canonTime, canonDate: canonDate, canonDateTime: canonDateTime, canonPair: canonPair, apply: apply, crossCheck: crossCheck, same: same, MONTHS: MONTHS };
+  var api = { canonTime: canonTime, canonDate: canonDate, canonDateTime: canonDateTime, canonPair: canonPair, apply: apply, crossCheck: crossCheck, same: same, MONTHS: MONTHS, rerank: rerank, fieldSpec: fieldSpec, nearYear: nearYear };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.ChengCardGrammar = api;
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this));

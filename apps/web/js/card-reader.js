@@ -472,6 +472,15 @@
       if (type === 'number') {
         var r = D.readNumber(ink, cw, chh, { allow: signed ? '0123456789.-' : '0123456789.', rejectWords: true, emptyIsZero: extra && extra.emptyIsZero, lineBottom: extra && extra.lineBottom, unit: extra && extra.unit });
         var nt = (r.emptyWord && extra && extra.emptyIsZero) ? '0' : cleanNumber(r.text);
+        if (gram && extra && extra.key) {
+          var alts = [nt];
+          var spec = gram.fieldSpec(extra.key);
+          if (spec.digits === 3 && /^\d{2}$/.test(nt)) alts.push(nt + '0');
+          if (spec.digits === 3 && /^\d{4}$/.test(nt)) {
+            alts.push(nt.slice(0, 3), nt.slice(1));
+          }
+          nt = gram.rerank(extra.key, alts, { previous: extra.previous || null, year: 2026 });
+        }
         return { text: nt, conf: r.conf, blank: !nt };
       }
       if (type === 'pair') {   // two numbers kept apart by a slash, like the two fresh-water tanks: 112/111, and optionally "= total"
@@ -961,7 +970,7 @@
       var useLines = false;   // rubbing out the found lines and cutting wider was tried: the cells read worse
       if (useLines) { var ex = 5 / card.width, ey = 5 / card.height; cellRect = { x: f.rect.x - ex, y: f.rect.y - ey, w: f.rect.w + 2 * ex, h: f.rect.h + 2 * ey }; }
       var prep = prepareField(card, cellRect, useLines ? 1 : (f.tbl >= 0 ? 4 : 3), f.grow, f.tbl >= 0, useLines ? layout.ruleLines : null);
-      var r = f.type === 'text' ? { text: '', conf: 0, blank: prep.inkRatio < 0.004 } : await ocrField(worker, prep, f.type, /trim|heel|list|temp:?-/i.test(f.key), { lineBottom: !!f.grow && f.tbl < 0, emptyIsZero: /^cm:/.test(f.key), unit: /°C|temp/i.test(f.label || '') || /^temp:|^sea$|^er$|^exh:|^t:\d+:(in|out)$|^acIn$|^acOut$|Temp$/.test(f.key) });
+      var r = f.type === 'text' ? { text: '', conf: 0, blank: prep.inkRatio < 0.004 } : await ocrField(worker, prep, f.type, /trim|heel|list|temp:?-/i.test(f.key), { key: f.key, lineBottom: !!f.grow && f.tbl < 0, emptyIsZero: /^cm:/.test(f.key), unit: /°C|temp/i.test(f.label || '') || /^temp:|^sea$|^er$|^exh:|^t:\d+:(in|out)$|^acIn$|^acOut$|Temp$/.test(f.key) });
       rows.push({ key: f.key, label: f.label, group: f.group, type: f.type, text: r.text, conf: r.conf, blank: r.blank, crop: imageDataToCanvas(prep.image) });
     }
     var boxes = layout.boxes.map(function (b) { return { key: b.key, label: b.label, group: b.group, dark: boxDarkness(card, b.rect) }; });
