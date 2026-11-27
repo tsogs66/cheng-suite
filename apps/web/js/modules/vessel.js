@@ -220,13 +220,18 @@ window.ChengProModules.vessel = {
         }
         await ChengPro.vessel.refresh();
         if (ChengPro.vessel.notifyIdentity) ChengPro.vessel.notifyIdentity();
-        window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'vessel' }));
+        /* Refresh this page only while it is still the one on screen. A later
+           menu click must not be pulled back here when the save finishes. */
+        if (document.querySelector('#sidebar .nav-item.active')?.dataset.module === 'vessel') {
+          window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'vessel' }));
+        }
       } catch (e) { toast(e.message); }
     });
 
     root.querySelector('#newVessel')?.addEventListener('click', () => {
       root._forceNew = true;
-      root.querySelector('#vesselForm').reset();
+      const form = root.querySelector('#vesselForm');
+      if (form) form.reset();
       toast('Enter details, then Create vessel');
     });
 
@@ -552,7 +557,9 @@ async function renderFleet(tbody) {
     btn.addEventListener('click', async () => {
       await ChengPro.vessel.setActive(btn.dataset.activate);
       toast('Active vessel updated');
-      window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'vessel' }));
+      if (document.querySelector('#sidebar .nav-item.active')?.dataset.module === 'vessel') {
+        window.dispatchEvent(new CustomEvent('chengpro:navigate', { detail: 'vessel' }));
+      }
     });
   });
 }

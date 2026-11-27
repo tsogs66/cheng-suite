@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 /* Every print builder against the v1 snapshot in history/cheng-pro.
-   Allowed differences: the annex "In use" column, and the corner squares
-   that 0.3.380 added to cards (original Tank/Voyage Chief did not print them). */
+   Allowed difference: the annex "In use" column.
+   Log and sounding cards keep four black corner marks so a photo can be lined up. */
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
@@ -117,7 +117,11 @@ for (const [label, rel, name] of SHEETS) {
 
 const voyage = read('modules/voyage/www/voyage_manager.html');
 const card = read('modules/tanks/public/js/tank-sounding-card.js');
-assert.ok(!voyage.includes('pr-card-mark') && !card.includes('pr-card-mark'), 'cards must not print corner squares v1 omitted');
+['tl', 'tr', 'bl', 'br'].forEach((corner) => {
+  assert.ok(voyage.includes('data-card-mark="' + corner + '"'), 'log card mark ' + corner);
+  assert.ok(card.includes('data-card-mark="' + corner + '"'), 'sounding card mark ' + corner);
+});
+assert.ok(voyage.includes('.pr-card-mark{') && card.includes('.pr-card-mark{'), 'corner marks are printed black squares');
 assert.ok(!read('modules/tanks/public/js/fuel-report.js').includes('<th>In use</th>'), 'annex print does not restore the In use column');
 assert.strictEqual(voyage, read('modules/voyage/www/index.html'), 'voyage print copies stay identical');
 

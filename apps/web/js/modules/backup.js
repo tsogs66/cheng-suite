@@ -1093,15 +1093,17 @@
         });
       };
 
-      root.querySelector('#bk-suite-restore').onclick = () => {
-        const input = root.querySelector('#bk-suite-file');
-        input.dataset.mode = 'restore';
+      const openBackupFile = (selector, mode) => {
+        const input = root.querySelector(selector);
+        if (!input) return;
+        input.dataset.mode = mode;
         input.click();
       };
+      root.querySelector('#bk-suite-restore').onclick = () => {
+        openBackupFile('#bk-suite-file', 'restore');
+      };
       root.querySelector('#bk-suite-merge').onclick = () => {
-        const input = root.querySelector('#bk-suite-file');
-        input.dataset.mode = 'merge';
-        input.click();
+        openBackupFile('#bk-suite-file', 'merge');
       };
       root.querySelector('#bk-suite-file').onchange = async (ev) => {
         const file = ev.target.files && ev.target.files[0];
@@ -1207,14 +1209,10 @@
       };
 
       root.querySelector('#bk-misc-restore').onclick = () => {
-        const input = root.querySelector('#bk-misc-file');
-        input.dataset.mode = 'restore';
-        input.click();
+        openBackupFile('#bk-misc-file', 'restore');
       };
       root.querySelector('#bk-misc-merge').onclick = () => {
-        const input = root.querySelector('#bk-misc-file');
-        input.dataset.mode = 'merge';
-        input.click();
+        openBackupFile('#bk-misc-file', 'merge');
       };
       root.querySelector('#bk-misc-file').onchange = async (ev) => {
         const file = ev.target.files && ev.target.files[0];
@@ -1374,12 +1372,10 @@
 
       root.querySelector('#bk-voyage-restore').onclick = () => {
         if (!confirm('Replace ALL Voyage Chief data in this browser? Export a backup first.')) return;
-        root.querySelector('#bk-voyage-db-file').dataset.mode = 'restore';
-        root.querySelector('#bk-voyage-db-file').click();
+        openBackupFile('#bk-voyage-db-file', 'restore');
       };
       root.querySelector('#bk-voyage-merge').onclick = () => {
-        root.querySelector('#bk-voyage-db-file').dataset.mode = 'merge';
-        root.querySelector('#bk-voyage-db-file').click();
+        openBackupFile('#bk-voyage-db-file', 'merge');
       };
       root.querySelector('#bk-voyage-db-file').onchange = async (ev) => {
         const file = ev.target.files && ev.target.files[0];
