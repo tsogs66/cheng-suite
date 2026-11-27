@@ -108,11 +108,11 @@ Effort: medium, and it should follow feature 1 so ROB discrepancies are the reco
 5. Pre-inspection scan (feature 3), using the lock and the audit from phase 4.
 6. Superintendent summary and CSV (feature 6).
 
-## Open questions
+## Decisions
 
-- Audit actor: chief’s name on the noon, the license email, or the device name?
-- ROB tolerance: 0.5 MT, a percent, or both?
-- May a submitted noon be corrected in place, or only by a new version that leaves the submitted copy?
-- A backup with no checksum (every file shipped before this work): restore it, or refuse it?
-- Excel: CSV that Excel opens, or a real xlsx file?
-- ECA reminder: how many hours before the split should it show?
+- Audit actor: the Chief Engineer name on the vessel. The screen asks for it when it is empty.
+- ROB tolerance: percent only, default 1%, edited on ROB reconciliation.
+- A submitted noon is corrected only by a new version. The submitted copy is hidden from the log and kept in the audit.
+- A backup with no checksum restores, and the status line says there was no integrity block.
+- Superintendent export is a real `.xlsx` file written on the device.
+- ECA changeover reminder: 1 hour before, and only while the noon fuel is still residual.

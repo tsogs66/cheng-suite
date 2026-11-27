@@ -6267,10 +6267,10 @@ async function boot() {
     }
   }
 
-  if ('serviceWorker' in navigator) {
-    // No ?v here on purpose: the browser re-fetches this URL and compares the
-    // bytes, so a pinned version only ever goes stale. The cache name inside
-    // the worker is what versions the cached files.
+  if ('serviceWorker' in navigator && !isAioEmbedded()) {
+    // Standalone Tank Chief only. Inside ChEng AIO the absolute /sw.js URL is
+    // the suite shell (HTML), and registering it is a script error. The suite
+    // does not use this tank-only cache.
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 

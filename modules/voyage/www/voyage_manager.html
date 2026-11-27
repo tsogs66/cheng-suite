@@ -12,6 +12,15 @@
 <meta name="author" content="Marvin C. Endozo (ts0gs)">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual">
 <meta name="theme-color" content="#0a1420">
+<script src="/js/ce-logic.js"></script>
+<style>
+@media (pointer: coarse) {
+  input[type="number"], input[inputmode="decimal"] { min-height: 44px; font-size: 16px; }
+}
+.ce-banner, .ce-lock-bar { margin: 8px 12px; padding: 10px 12px; border-radius: 10px; background: rgba(196,92,42,.16); border: 1px solid rgba(196,92,42,.55); }
+.ce-draft { position: fixed; left: 12px; bottom: 12px; z-index: 30; padding: 6px 10px; border-radius: 8px; background: rgba(10,20,32,.92); }
+@media print { #ceAlertBanner, #ceDraftLine, #ceLockBar { display: none !important; } }
+</style>
 <meta name="license-api" content="">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -7097,7 +7106,7 @@ let dbOpenPromise = null;
 function openDB(){
   if (dbOpenPromise) return dbOpenPromise;
   dbOpenPromise = new Promise((resolve,reject)=>{
-    const req = indexedDB.open('noonReportDB', 11);
+    const req = indexedDB.open('noonReportDB', 12);
     req.onupgradeneeded = (e)=>{
       const d = e.target.result;
       if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', {keyPath:'key'});
@@ -7134,6 +7143,10 @@ function openDB(){
          Also local-only: it is this device's account of its own syncs, which a
          restore from another device has no business overwriting. */
       if (!d.objectStoreNames.contains('syncLog')) d.createObjectStore('syncLog', {keyPath:'id'});
+      /* v12 adds stores only. Existing rows are not rewritten or removed. */
+      if (!d.objectStoreNames.contains('robRecon')) d.createObjectStore('robRecon', {keyPath:'id'});
+      if (!d.objectStoreNames.contains('auditLog')) d.createObjectStore('auditLog', {keyPath:'id'});
+      if (!d.objectStoreNames.contains('voyageBriefs')) d.createObjectStore('voyageBriefs', {keyPath:'id'});
       /* Pieces of an upload or a download that is still in progress. One
          piece is small on purpose: a single IndexedDB value the size of a
          whole leg is what closes the Android WebView. This store is not part
@@ -7193,9 +7206,17 @@ function safeCloneForIdb(value){
 }
 async function txStore(name, mode){ const d = await ensureDB(); return d.transaction(name, mode).objectStore(name); }
 async function dbPut(store, obj){
+  if (store === 'entries' && obj && !obj._ceBypass) {
+    const routed = await ceRouteEntryWrite(obj);
+    if (routed) {
+      ceMarkDraft('entries');
+      return;
+    }
+  }
   return enqueueDbWrite(async ()=>{
     const d = await ensureDB();
     const payload = safeCloneForIdb(obj);
+    if (payload && Object.prototype.hasOwnProperty.call(payload, '_ceBypass')) delete payload._ceBypass;
     return new Promise((res,rej)=>{
       const tx = d.transaction(store, 'readwrite');
       tx.oncomplete = ()=> res();
@@ -7204,8 +7225,90 @@ async function dbPut(store, obj){
       try{ tx.objectStore(store).put(payload); }
       catch(err){ rej(err); }
     });
-  });
+  }).then(()=>{ if (store === 'entries') ceMarkDraft(store); });
 }
+function ceMarkDraft(){
+  let el = document.getElementById('ceDraftLine');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ceDraftLine';
+    el.className = 'ce-draft';
+    el.setAttribute('role', 'status');
+    document.body.appendChild(el);
+  }
+  const t = new Date();
+  el.textContent = 'Draft saved ' + t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+async function cePutRaw(store, row){
+  const copy = Object.assign({}, row, { _ceBypass: true });
+  await dbPut(store, copy);
+}
+async function ceRouteEntryWrite(obj){
+  if (!window.ChengCe) return false;
+  let prev = null;
+  try { prev = await dbGet('entries', obj.id); } catch (err) { prev = null; }
+  if (!prev) return false;
+  if (prev.hidden && prev.supersededBy) {
+    obj.id = prev.supersededBy;
+    obj.submittedAt = null;
+    obj.hidden = false;
+    return false;
+  }
+  if (!prev.submittedAt && obj.submittedAt && typeof logRobByGrade === 'function') {
+    try { obj.ceRob = logRobByGrade(); } catch (err) { /* stamp is optional */ }
+  }
+  if (!prev.submittedAt || prev.hidden) return false;
+  if (ChengCe.sameNoonFigures(prev, obj)) return false;
+  const actor = (state.setup && state.setup.chEng) || obj.chEng || prev.chEng || '';
+  const decision = ChengCe.versionSubmittedEdit(prev, obj, {
+    actor: actor,
+    now: new Date().toISOString(),
+    newId: String(obj.id) + '-r' + Date.now().toString(36),
+    reason: 'Correction of submitted noon'
+  });
+  if (!decision.changed) return false;
+  await cePutRaw('entries', decision.archived);
+  await cePutRaw('entries', decision.current);
+  try { await cePutRaw('auditLog', decision.audit); } catch (err) { /* store arrives with v12 */ }
+  Object.assign(obj, decision.current);
+  if (state.entries) {
+    const i = state.entries.findIndex((e) => e && (e === obj || e.id === decision.archived.id || e.id === decision.current.id));
+    if (i >= 0) state.entries[i] = obj;
+  }
+  if (!actor) {
+    try { showToast('Correction saved as a new version. Enter the Chief Engineer name on ROB reconciliation.'); } catch (err) { /* toast is optional */ }
+  }
+  return true;
+}
+function cePaintNoonBanner(){
+  let alerts = [];
+  try { alerts = JSON.parse(localStorage.getItem('chengCeLastAlerts') || '[]'); } catch (err) { alerts = []; }
+  let el = document.getElementById('ceAlertBanner');
+  if (!alerts.length) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ceAlertBanner';
+    el.className = 'ce-banner';
+    el.setAttribute('role', 'status');
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  el.textContent = alerts.map(a => a && a.text).filter(Boolean).join(' · ');
+}
+(function ceTouchInputs(){
+  const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  if (!coarse) return;
+  const apply = () => {
+    document.querySelectorAll('input[type="number"]').forEach((el) => {
+      if (!el.getAttribute('inputmode')) el.setAttribute('inputmode', 'decimal');
+    });
+  };
+  const start = () => {
+    apply();
+    if (document.body) new MutationObserver(apply).observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.body) start();
+  else document.addEventListener('DOMContentLoaded', start);
+})();
 async function dbPutMany(store, objs){
   const list = (objs || []).filter(Boolean);
   if (!list.length) return;
@@ -9654,7 +9757,7 @@ async function loadVesselFromDb(vesselId){
     if (item.vesselId) return vesselIdentityKeys(vesselId).has(item.vesselId);
     return vesselId === LEGACY_VESSEL_ID;
   };
-  state.entries = allEntries.filter(match).map(normalizeEntry);
+  state.entries = allEntries.filter(match).filter(e => e && !e.hidden).map(normalizeEntry);
   state.receipts = allReceipts.filter(match);
   state.documents = allDocs.filter(match);
   state.abstracts = allAbstracts.filter(match);
@@ -11105,6 +11208,7 @@ function entryMatchesActiveLeg(e){
 
 function sortedEntries(){
   return state.entries
+    .filter(e => e && !e.hidden)
     .filter(entryMatchesActiveLeg)
     .sort((a,b)=> new Date(a.datetime)-new Date(b.datetime));
 }
@@ -16829,6 +16933,7 @@ function renderConsumptionTable(rows){
 
 function render(){
   _gaugeUid = 0;
+  try { cePaintNoonBanner(); } catch (err) { /* banner is not part of the log */ }
   /* Vessel identity is painted before anything that computes, so a failure further
      down cannot leave these boxes blank — a blank box that the user then saves would
      overwrite the stored Chief Engineer, DWT and IMO with nothing.
@@ -33154,7 +33259,7 @@ document.getElementById('btnCopyPcInstall')?.addEventListener('click', async ()=
 
 /* ---------------- full database backup / restore / merge ---------------- */
 const DB_BACKUP_FORMAT = 'noon-report-db-v1';
-const DB_BACKUP_STORES = ['entries','receipts','documents','abstracts','printHistory','voyageLegs','voyageLegParts','orbEntries','deletedBackup'];
+const DB_BACKUP_STORES = ['entries','receipts','documents','abstracts','printHistory','voyageLegs','voyageLegParts','orbEntries','deletedBackup','robRecon','auditLog','voyageBriefs'];
 
 /* Snapshots and the sync log are device-local history, never part of a backup:
    restoring a file must not be able to overwrite the record of what it replaced. */
@@ -40794,8 +40899,8 @@ function askText(opts){
   later();
   window.alignFields = run;
 })();
+</script>
 <link rel="stylesheet" href="/css/station-pages.css">
 <script src="noon-steps.js"></script>
-</script>
 </body>
 </html>

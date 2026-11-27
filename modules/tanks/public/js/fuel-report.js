@@ -281,6 +281,11 @@ const FuelReport = (() => {
       <div class="fr-preview-label no-print">Print preview — this is the document PRINT &amp; SAVE sends to the printer</div>
       <div id="fr-live-preview" class="fuel-report-print-doc fr-preview"></div>`;
     main.appendChild(wrap);
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+      wrap.querySelectorAll('input[type="number"]').forEach((el) => {
+        if (!el.getAttribute('inputmode')) el.setAttribute('inputmode', 'decimal');
+      });
+    }
 
     bindEvents(wrap);
     bindBunkerNav(main);
@@ -295,7 +300,15 @@ const FuelReport = (() => {
       `<option value="${esc(t)}" ${h.reportType === t ? 'selected' : ''}>${esc(t)}</option>`).join('');
     const heelVal = h.heel === '' || h.heel == null ? 0 : h.heel;
 
+    const submitted = !!(h && view.form && view.form.submittedAt);
     return `<div class="form-panel fr-header no-print">
+      <div class="ce-lock-bar" id="frLockBar">
+        <span id="frDraftLine" role="status">${submitted ? 'Submitted ' + esc(view.form.submittedAt) : 'Draft'}</span>
+        <label>Chief Engineer <input id="frChiefName" value="${esc((view.form.signature && view.form.signature.preparedBy) || '')}"></label>
+        <button type="button" class="btn" id="fr-submit">Submit soundings</button>
+        <button type="button" class="btn" id="fr-correct">Correct as new version</button>
+        <p class="hint" id="frChiefHint" hidden>Enter the Chief Engineer name. The correction is filed under that name.</p>
+      </div>
       <div class="fr-header-grid">
         <label class="fr-field"><span>VOYAGE</span>
           <input data-head="voyageNo" value="${esc(h.voyageNo)}"></label>
@@ -959,6 +972,50 @@ const FuelReport = (() => {
     const frMenu = document.getElementById('fr-main-menu');
     if (frMenu) frMenu.onclick = () => navigate('dashboard');
     document.getElementById('fr-print-only').onclick = () => printReport(recompute());
+    const submitBtn = document.getElementById('fr-submit');
+    const correctBtn = document.getElementById('fr-correct');
+    const chiefInput = document.getElementById('frChiefName');
+    function soundingChief() {
+      const name = String((chiefInput && chiefInput.value) || (view.form.signature && view.form.signature.preparedBy) || '').trim();
+      const hint = document.getElementById('frChiefHint');
+      if (!name) {
+        if (hint) hint.hidden = false;
+        if (chiefInput) chiefInput.focus();
+        return '';
+      }
+      if (hint) hint.hidden = true;
+      if (!view.form.signature) view.form.signature = { preparedBy: name, rank: 'Chief Engineer' };
+      else view.form.signature.preparedBy = name;
+      return name;
+    }
+    function applySoundingLock() {
+      const on = !!(view.form && view.form.submittedAt);
+      wrap.querySelectorAll('input, select, textarea').forEach((el) => {
+        if (el.id === 'frChiefName') return;
+        el.disabled = on;
+      });
+    }
+    if (submitBtn) submitBtn.onclick = async () => {
+      const name = soundingChief();
+      if (!name) return;
+      view.form.submittedAt = new Date().toISOString();
+      view.form.submittedBy = name;
+      view.dirty = true;
+      await saveReport({ snapshot: true, print: false });
+    };
+    if (correctBtn) correctBtn.onclick = async () => {
+      const name = soundingChief();
+      if (!name || !view.form.submittedAt) return;
+      await saveReport({ snapshot: true, quiet: true });
+      view.form.submittedAt = null;
+      view.form.submittedBy = null;
+      view.form.correctedBy = name;
+      view.dirty = true;
+      await saveReport({ snapshot: false, quiet: true });
+      showToast('Correction is a new version. The submitted sheet stays in Saved reports.');
+      navigate('fuel-report');
+    };
+    applySoundingLock();
     document.getElementById('fr-fill-logbook-rob')?.addEventListener('click', () => {
       fillLogbookFromVoyageRob();
     });
@@ -1058,7 +1115,11 @@ const FuelReport = (() => {
     if (!draftTimer) return;
     clearTimeout(draftTimer); draftTimer = null;
     if (!view.form || !document.querySelector('.fuel-report-page')) return;
-    try { await saveReport({ snapshot: false, quiet: true, draft: true }); } catch (err) { console.warn('monitoring draft', err); }
+    try {
+      await saveReport({ snapshot: false, quiet: true, draft: true });
+      const line = document.getElementById('frDraftLine');
+      if (line && !(view.form && view.form.submittedAt)) line.textContent = 'Draft saved';
+    } catch (err) { console.warn('monitoring draft', err); }
   }
 
   async function saveReport({ snapshot = false, print = false, quiet = false, draft = false } = {}) {

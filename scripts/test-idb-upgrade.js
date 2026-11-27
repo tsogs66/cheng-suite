@@ -27,12 +27,13 @@ if (!chrome) {
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cheng-idb-'));
 const html = `<!DOCTYPE html><meta charset="utf-8"><title>idb</title><script>
 const STORES = ['meta','entries','receipts','documents','abstracts','printHistory','voyageLegs','voyageLegParts','orbEntries','deletedBackup','dbSnapshots','dbSnapshotParts','syncLog','syncPieces'];
-function openDb() {
+const V12 = ['robRecon', 'auditLog', 'voyageBriefs'];
+function openAt(version) {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('noonReportDB', 11);
+    const req = indexedDB.open('noonReportDB', version);
     req.onupgradeneeded = () => {
       const d = req.result;
-      STORES.forEach((name) => {
+      STORES.concat(version >= 12 ? V12 : []).forEach((name) => {
         if (!d.objectStoreNames.contains(name)) {
           if (name === 'voyageLegParts') {
             const s = d.createObjectStore(name, { keyPath: 'id' });
@@ -74,16 +75,27 @@ function readMeta(db) {
   });
 }
 (async () => {
-  const first = await openDb();
+  const first = await openAt(11);
   await putMeta(first, 'mv-harbour-key');
-  const names = Array.from(first.objectStoreNames);
+  await new Promise((resolve, reject) => {
+    const tx = first.transaction('entries', 'readwrite');
+    tx.objectStore('entries').put({ id: 'noon-1', rob: { LSFO: 100 } });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
   first.close();
-  const second = await openDb();
+  const second = await openAt(12);
   const row = await readMeta(second);
-  const still = Array.from(second.objectStoreNames);
-  document.title = (row && row.value === 'mv-harbour-key' && still.join(',') === names.join(','))
-    ? 'IDB_OK ' + row.value
-    : 'IDB_BAD';
+  const entry = await new Promise((resolve, reject) => {
+    const tx = second.transaction('entries', 'readonly');
+    const req = tx.objectStore('entries').get('noon-1');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  const names = Array.from(second.objectStoreNames);
+  const added = V12.every((name) => names.indexOf(name) >= 0);
+  const kept = row && row.value === 'mv-harbour-key' && entry && entry.rob && entry.rob.LSFO === 100 && added;
+  document.title = kept ? 'IDB_OK ' + row.value : 'IDB_BAD';
 })().catch((e) => { document.title = 'IDB_BAD ' + (e && e.message); });
 </script>`;
 

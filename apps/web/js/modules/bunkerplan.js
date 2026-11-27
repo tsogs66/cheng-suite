@@ -42,6 +42,7 @@ window.ChengProModules.bunkerplan = {
     }
     const src = ChengPro.voyageEmbedUrl({ page: 'bunkerplan' });
     root.innerHTML = `
+      <div class="ce-banner-slot"></div>
       <div class="bunker-file-bar">
         <span>Bunker file</span>
         <button type="button" class="btn" data-file-mod="bunkerplan">Stem</button>
@@ -69,6 +70,7 @@ window.ChengProModules.bunkerplan = {
     window.addEventListener('message', handler);
     root.dataset.bpHandler = 'bound';
     if (typeof bindBunkerFile === 'function') bindBunkerFile(root);
+    if (window.ChengCeUI) ChengCeUI.paintBanner(root);
   },
 };
 
