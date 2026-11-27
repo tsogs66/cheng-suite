@@ -184,8 +184,8 @@ html.station button.primary {
   font-weight: 650;
 }
 
-/* Soundings under 1100px: one card per tank, matching the mockup. Wider screens keep the grid. */
-@media (max-width: 1099px) {
+/* Phone only. Tablet (800×1280 and 1280×800) and Windows keep the v1 table. */
+@media (max-width: 599px), (max-height: 500px) and (orientation: landscape) {
   html.station .fr-sheet {
     min-width: 0 !important;
     width: 100% !important;
@@ -234,5 +234,28 @@ html.station button.primary {
   html.station .fr-sheet td[data-fr-cell$=".weightAirMT"] {
     font-size: 22px;
     font-weight: 650;
+  }
+}
+
+/* Tablet and Windows: the same columns as v1, with the station colours.
+   Headers wrap so a column stays near its v1 width. A wide sheet scrolls in .scroll-x. */
+@media (min-width: 600px) {
+  html.station .scroll-x > table.fr-sheet thead th,
+  html.station table.fr-sheet thead th {
+    white-space: normal;
+    background: #13202b;
+  }
+  html.station.bright table.fr-sheet thead th { background: #f7f3ea; }
+  html.station table.fr-sheet tbody tr:nth-child(even) td {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  html.station table.fr-sheet tbody tr:nth-child(even) th.fr-tank-name {
+    background: #162432;
+  }
+  html.station table.fr-sheet tbody input:not([type="checkbox"]),
+  html.station table.fr-sheet tbody select,
+  html.station table.fr-table input:not([type="checkbox"]),
+  html.station table.fr-table select {
+    min-height: 44px;
   }
 }
