@@ -225,6 +225,16 @@ html.station button.primary {
     text-transform: uppercase;
     color: var(--muted);
   }
+  html.station .fr-more-btn {
+    display: inline-flex;
+    margin-left: 8px;
+    min-height: 32px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+  html.station .fr-sheet td[data-phone="more"],
+  html.station .fr-sheet th[data-phone="more"] { display: none; }
+  html.station .fr-sheet tr.fr-open td[data-phone="more"] { display: block; }
   html.station .fr-sheet td.fr-actual-cell input,
   html.station .fr-sheet td[data-label="Temp"] input {
     font-size: 22px;
@@ -235,6 +245,19 @@ html.station button.primary {
     font-size: 22px;
     font-weight: 650;
   }
+}
+
+.fr-more-btn { display: none; }
+
+/* The Plan / Monitoring / After / Summary strip sticks to the top.
+   Column titles stick just under it, so a scroll does not hide them. */
+html.station .bk-nav {
+  z-index: 8;
+  background: #0b1218;
+}
+html.station.bright .bk-nav { background: #e6e0d2; }
+html.station:has(.bk-nav) table thead th {
+  top: 100px;
 }
 
 /* Tablet and Windows: the same columns as v1, with the station colours.
