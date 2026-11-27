@@ -1,0 +1,429 @@
+/* Mild HUD + 3D depth — ChEng AIO / Voyage / Tank (Windows + tablet landscape) */
+:root {
+  --hud-glow: rgba(87, 179, 171, 0.22);
+  --hud-edge: rgba(201, 154, 83, 0.35);
+  --btn-depth-top: rgba(255, 255, 255, 0.14);
+  --btn-depth-bot: rgba(0, 0, 0, 0.45);
+  --hud-scan: rgba(87, 179, 171, 0.04);
+}
+
+html.bright {
+  --hud-glow: rgba(23, 102, 95, 0.12);
+  --hud-edge: rgba(110, 72, 20, 0.28);
+  --btn-depth-top: rgba(255, 255, 255, 0.7);
+  --btn-depth-bot: rgba(18, 34, 56, 0.18);
+  --hud-scan: rgba(23, 102, 95, 0.03);
+}
+
+/* Subtle HUD scan / corner ticks on main panels (screen only) */
+@media (min-width: 901px), (orientation: landscape) and (min-width: 721px) {
+  .panel,
+  .form-panel,
+  .aio-panel,
+  .bunker-side {
+    position: relative;
+    box-shadow:
+      inset 0 0 0 1px var(--hud-edge),
+      0 0 24px var(--hud-glow);
+  }
+  .panel::before,
+  .form-panel::before,
+  .bunker-side::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      linear-gradient(180deg, var(--hud-scan) 0%, transparent 40%),
+      linear-gradient(90deg, transparent 0%, transparent 97%, var(--hud-edge) 100%),
+      linear-gradient(0deg, transparent 0%, transparent 97%, var(--hud-edge) 100%);
+    opacity: 0.55;
+    z-index: 0;
+  }
+  .panel > *,
+  .form-panel > *,
+  .bunker-side > * { position: relative; z-index: 1; }
+
+  /* 3D depth buttons */
+  .btn,
+  button.primary,
+  button.ghost,
+  .nav-item,
+  .nav-btn,
+  .tab,
+  .theme-toggle {
+    box-shadow:
+      inset 0 1px 0 var(--btn-depth-top),
+      inset 0 -2px 0 var(--btn-depth-bot),
+      0 3px 0 rgba(0, 0, 0, 0.35),
+      0 6px 14px rgba(0, 0, 0, 0.22);
+    transform: translateY(0);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+    background-image:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 42%),
+      repeating-linear-gradient(
+        -18deg,
+        transparent,
+        transparent 6px,
+        rgba(255, 255, 255, 0.015) 6px,
+        rgba(255, 255, 255, 0.015) 7px
+      );
+  }
+  .btn:active,
+  button.primary:active,
+  button.ghost:active,
+  .nav-item:active,
+  .nav-btn:active,
+  .tab:active {
+    transform: translateY(2px);
+    box-shadow:
+      inset 0 2px 4px rgba(0, 0, 0, 0.35),
+      0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  /* Futuristic 3D result / readout boxes */
+  .hud-result,
+  .field.calc.hud-result,
+  .bunker-totals .field.calc {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 14px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--hud-edge);
+    background:
+      linear-gradient(145deg, rgba(87, 179, 171, 0.12), rgba(0, 0, 0, 0.28) 55%),
+      radial-gradient(120% 80% at 10% 0%, rgba(201, 154, 83, 0.12), transparent 50%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      inset 0 -2px 8px rgba(0, 0, 0, 0.35),
+      0 8px 22px rgba(0, 0, 0, 0.28),
+      0 0 18px var(--hud-glow);
+    min-height: 64px;
+  }
+  html.bright .hud-result,
+  html.bright .bunker-totals .field.calc {
+    background:
+      linear-gradient(145deg, rgba(23, 102, 95, 0.08), rgba(255, 255, 255, 0.92) 55%),
+      radial-gradient(120% 80% at 10% 0%, rgba(110, 72, 20, 0.08), transparent 50%);
+  }
+  .hud-result .hud-value,
+  .bunker-totals .field.calc input {
+    order: 1;
+    font-family: var(--mono, "IBM Plex Mono", Consolas, monospace);
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    color: inherit;
+    width: 100%;
+  }
+  .hud-result label,
+  .bunker-totals .field.calc label {
+    order: 2;
+    margin: 0;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.72;
+    font-weight: 600;
+  }
+}
+
+@media print {
+  .panel::before,
+  .form-panel::before,
+  .bunker-side::before { display: none !important; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion, tier 1.
+ *
+ * Four things move, and only these four: a figure arriving, a level changing,
+ * the field that has focus, and the link to the server. Everything else on
+ * these pages is a number an engineer is reading in order to write it on a
+ * sheet, and motion under a number being read is a nuisance, not a delight.
+ *
+ * Transform and opacity only. A ship's PC is often a Celeron with no GPU
+ * worth the name, and a blur or a shadow animation on a full-width panel is
+ * how a dashboard starts dropping frames in an engine room.
+ * ------------------------------------------------------------------------- */
+
+/* A level that changes slides to its new height instead of cutting to it. */
+.fillbar-fill,
+.tg-liquid {
+  transition: width 460ms cubic-bezier(.2, .8, .2, 1),
+              height 460ms cubic-bezier(.2, .8, .2, 1),
+              background-color 300ms ease;
+}
+
+/* The field with focus is unmistakable.
+ *
+ * An earlier version drew corner brackets with clip-path. It looked the part
+ * and was wrong: clip-path cuts the element's content, so a long figure in a
+ * narrow field would lose a digit to the decoration. A ring that cannot
+ * overlap what it surrounds is worth more here than a clever shape. */
+@media (min-width: 901px), (orientation: landscape) and (min-width: 721px) {
+  .vessel-switcher select:focus-visible,
+  .field input:focus-visible,
+  .field select:focus-visible,
+  .field textarea:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  .btn:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--accent, #57b3ab);
+    outline-offset: 2px;
+    box-shadow: 0 0 14px var(--hud-glow) !important;
+    transition: box-shadow 120ms ease;
+  }
+}
+
+/* The link to the server, breathing when it is there and insistent when it
+   is not. Two seconds is a heartbeat at rest; the bad state is faster on
+   purpose, because it wants looking at. */
+.health-dot.ok { animation: cheng-led-idle 2.4s ease-in-out infinite; }
+.health-dot.bad { animation: cheng-led-alarm 900ms ease-in-out infinite; }
+
+@keyframes cheng-led-idle {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(95, 158, 110, 0.18); }
+  50%      { box-shadow: 0 0 0 7px rgba(95, 158, 110, 0.05); }
+}
+@keyframes cheng-led-alarm {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+/* A tank at or over its filling limit should look like it. */
+.fillbar-fill.is-over,
+.tg-liquid.is-over { animation: cheng-over-pulse 1.6s ease-in-out infinite; }
+@keyframes cheng-over-pulse {
+  0%, 100% { filter: none; }
+  50%      { filter: brightness(1.25); }
+}
+
+/* Nothing above is information the page depends on, so all of it stops. */
+@media (prefers-reduced-motion: reduce) {
+  .fillbar-fill,
+  .tg-liquid,
+  .health-dot.ok,
+  .health-dot.bad,
+  .fillbar-fill.is-over,
+  .tg-liquid.is-over {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion, tier 2.
+ *
+ * Tier 1 moved things that carry information. These three are atmosphere, and
+ * they are kept to the places where atmosphere costs nothing: a panel arriving,
+ * a wait that would otherwise look like a hang, and the surface of a tank that
+ * is drawn as a picture anyway.
+ *
+ * Still transform and opacity only, and still nothing under a figure being
+ * read off the screen.
+ * ------------------------------------------------------------------------- */
+
+@media (min-width: 901px), (orientation: landscape) and (min-width: 721px) {
+
+  /* Panels arrive rather than appear. 8px and 240ms — enough to read as
+     deliberate, not enough to wait for. The stagger stops at six because a
+     seventh panel starting a third of a second late reads as a slow page. */
+  .panel, .form-panel {
+    animation: cheng-panel-in 240ms cubic-bezier(.2, .8, .2, 1) both;
+  }
+  .panel:nth-of-type(2), .form-panel:nth-of-type(2) { animation-delay: 30ms; }
+  .panel:nth-of-type(3), .form-panel:nth-of-type(3) { animation-delay: 60ms; }
+  .panel:nth-of-type(4), .form-panel:nth-of-type(4) { animation-delay: 90ms; }
+  .panel:nth-of-type(5), .form-panel:nth-of-type(5) { animation-delay: 120ms; }
+  .panel:nth-of-type(n+6), .form-panel:nth-of-type(n+6) { animation-delay: 150ms; }
+
+  @keyframes cheng-panel-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* A panel that is working. Add .is-working while something slow runs and a
+     line sweeps down it — a wait that shows it is a wait rather than a hang.
+     Nothing removes it on its own; whoever sets it takes it off. */
+  .is-working { position: relative; }
+  .is-working::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent 0%, var(--hud-glow) 48%, transparent 96%);
+    background-size: 100% 42%;
+    background-repeat: no-repeat;
+    animation: cheng-sweep 1.15s linear infinite;
+    z-index: 2;
+  }
+  @keyframes cheng-sweep {
+    from { background-position: 0 -45%; }
+    to   { background-position: 0 145%; }
+  }
+
+  /* The tank schematics are the best drawing in the suite. The liquid gets a
+     soft inner glow in its own grade colour, and its surface breathes — a
+     3.2s cycle, slow enough to read as a ship at sea rather than a loading
+     spinner. */
+  .tg-liquid { filter: drop-shadow(0 0 3px currentColor); }
+  .tg-surface {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: cheng-surface 3.2s ease-in-out infinite;
+  }
+  @keyframes cheng-surface {
+    0%, 100% { opacity: 0.28; transform: translateY(0); }
+    50%      { opacity: 0.42; transform: translateY(0.6px); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel, .form-panel,
+  .is-working::after,
+  .tg-surface {
+    animation: none !important;
+  }
+  /* The sweep still marks the panel as busy; it just stops moving. */
+  .is-working::after { background: var(--hud-glow); opacity: 0.35; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Bottom navigation — Voyage Chief tab rail (AIO shell + Tank + Voyage).
+ *
+ * On a ten-inch tablet in bright mode the bar reads as a grey rail: inactive
+ * cells sit flat with a carved groove between them, and the active cell lifts
+ * as a white tab with a soft scoop where it meets its neighbours. Phone sizes
+ * keep the simpler tint from each module's stylesheet.
+ * ------------------------------------------------------------------------- */
+
+.bottom-nav .bn-item,
+.bottom-nav .bottom-item {
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+.bottom-nav .bn-item:active,
+.bottom-nav .bottom-item:active {
+  transform: scale(0.96);
+}
+
+@media (pointer: coarse) and (min-width: 600px) and (min-height: 600px) {
+  .bottom-nav {
+    align-items: flex-end;
+    gap: 0;
+    padding-top: 0;
+  }
+
+  .bottom-nav .bn-item,
+  .bottom-nav .bottom-item {
+    position: relative;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .bottom-nav .bn-item + .bn-item,
+  .bottom-nav .bottom-item + .bottom-item {
+    box-shadow:
+      inset 1px 0 0 rgba(255, 255, 255, 0.22),
+      inset 2px 0 0 rgba(0, 0, 0, 0.18);
+  }
+
+  html.bright .bottom-nav .bn-item + .bn-item,
+  html.bright .bottom-nav .bottom-item + .bottom-item {
+    box-shadow:
+      inset 1px 0 0 rgba(255, 255, 255, 0.58),
+      inset 2px 0 0 rgba(18, 34, 56, 0.1);
+  }
+
+  html.bright .bottom-nav {
+    background: #bcc3cf;
+    border-top: 1px solid rgba(18, 34, 56, 0.22);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.42),
+      0 -6px 20px rgba(18, 34, 56, 0.08);
+  }
+
+  html.bright .bottom-nav .bn-item.active,
+  html.bright .bottom-nav .bottom-item.active {
+    color: var(--brass, var(--accent-2, #6e4814));
+    background: #ffffff;
+    border-radius: 12px 12px 0 0;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      0 -5px 16px rgba(18, 34, 56, 0.16);
+    transform: translateY(-3px);
+    z-index: 2;
+  }
+
+  html.bright .bottom-nav .bn-item.active::before,
+  html.bright .bottom-nav .bn-item.active::after,
+  html.bright .bottom-nav .bottom-item.active::before,
+  html.bright .bottom-nav .bottom-item.active::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+  }
+
+  html.bright .bottom-nav .bn-item.active::before,
+  html.bright .bottom-nav .bottom-item.active::before {
+    left: -14px;
+    background: radial-gradient(circle at 0 0, transparent 13px, #ffffff 14px);
+  }
+
+  html.bright .bottom-nav .bn-item.active::after,
+  html.bright .bottom-nav .bottom-item.active::after {
+    right: -14px;
+    background: radial-gradient(circle at 100% 0, transparent 13px, #ffffff 14px);
+  }
+
+  html.bright .bottom-nav .bn-item.active:active,
+  html.bright .bottom-nav .bottom-item.active:active {
+    transform: translateY(-3px) scale(0.96);
+  }
+
+  html:not(.bright) .bottom-nav {
+    background: rgba(10, 20, 32, 0.98);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  html:not(.bright) .bottom-nav .bn-item.active,
+  html:not(.bright) .bottom-nav .bottom-item.active {
+    color: var(--brass, var(--accent-2, #c99a53));
+    background: var(--nav-active-bg, rgba(201, 154, 83, 0.14));
+    border-radius: 10px 10px 0 0;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 -4px 14px rgba(0, 0, 0, 0.35);
+    transform: translateY(-2px);
+    z-index: 2;
+  }
+
+  html:not(.bright) .bottom-nav .bn-item.active:active,
+  html:not(.bright) .bottom-nav .bottom-item.active:active {
+    transform: translateY(-2px) scale(0.96);
+  }
+}
+
+.bottom-nav .bn-more-item {
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.bottom-nav .bn-more-item:active,
+.bn-more-grid .bn-more-item:active {
+  transform: scale(0.97);
+}
