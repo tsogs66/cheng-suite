@@ -13,6 +13,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
+const { openCdp } = require('./cdp-socket');
 
 const chrome = ['/usr/local/bin/google-chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find((p) => {
   try { return fs.existsSync(p); } catch (e) { return false; }
@@ -107,9 +108,12 @@ function waitFor(url, tries) {
 }
 
 (async () => {
+  let proc = null;
+  let ws = null;
+  try {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
-  const proc = spawn(chrome, [
+  proc = spawn(chrome, [
     '--headless=new',
     '--disable-gpu',
     '--no-first-run',
@@ -140,25 +144,15 @@ function waitFor(url, tries) {
   });
   const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
   if (!page) throw new Error('no page target');
-  const ws = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => {
-    ws.addEventListener('open', resolve);
-    ws.addEventListener('error', reject);
-  });
+  ws = await openCdp(page.webSocketDebuggerUrl);
   let id = 0;
-  function send(method, params) {
+  async function send(method, params) {
     const msgId = ++id;
-    return new Promise((resolve) => {
-      const onMsg = (ev) => {
-        const data = JSON.parse(ev.data);
-        if (data.id === msgId) {
-          ws.removeEventListener('message', onMsg);
-          resolve(data.result);
-        }
-      };
-      ws.addEventListener('message', onMsg);
-      ws.send(JSON.stringify({ id: msgId, method, params }));
-    });
+    ws.send(JSON.stringify({ id: msgId, method, params }));
+    for (;;) {
+      const data = await ws.next();
+      if (data && data.id === msgId) return data.result;
+    }
   }
   let title = '';
   for (let i = 0; i < 40; i++) {
@@ -170,14 +164,17 @@ function waitFor(url, tries) {
     if (title.startsWith('IDB_')) break;
     await new Promise((r) => setTimeout(r, 150));
   }
-  ws.close();
-  proc.kill('SIGTERM');
-  server.close();
   if (title !== 'IDB_OK mv-harbour-key') {
     console.error('idb upgrade failed:', title);
-    process.exit(1);
+    process.exitCode = 1;
+  } else {
+    console.log('idb upgrade: ok');
   }
-  console.log('idb upgrade: ok');
+  } finally {
+    try { if (ws) ws.close(); } catch (e) { /* socket already gone */ }
+    try { if (proc) proc.kill('SIGTERM'); } catch (e) { /* already exited */ }
+    server.close();
+  }
 })().catch((err) => {
   console.error(err);
   process.exit(1);
