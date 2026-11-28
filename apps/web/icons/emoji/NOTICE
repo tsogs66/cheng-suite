@@ -1,0 +1,11 @@
+Noto Color Emoji
+Copyright 2013 Google LLC
+Licensed under the Apache License, Version 2.0 (see LICENSE in this directory).
+
+The SVG files in this folder are the Noto Color Emoji artwork from
+https://github.com/googlefonts/noto-emoji tag v2.034 (svg/emoji_uXXXX.svg).
+They are bundled so the app shows the same colour glyphs on Android, Windows
+and Electron, without a system emoji font.
+
+Each file corresponds to a glyph Voyage Chief or Tank Chief already used on a
+button, or to the house, compass and oil-drum marks named with those buttons.

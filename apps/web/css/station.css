@@ -91,39 +91,75 @@ html.station .nav-item {
   gap: 8px;
   text-align: left;
 }
+/* Colour emoji sit on the page the way v1's glyphs did: no plate behind them. */
 html.station .nav-plate,
-html.station .bottom-item .bn-svg {
-  background-color: #3a4450;
-  color: #f2efe6;
-  background-image: linear-gradient(165deg, rgba(255,255,255,.42) 0%, rgba(255,255,255,.08) 42%, rgba(0,0,0,.08) 58%, rgba(0,0,0,.32) 100%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.5);
-}
-html.station .nav-plate {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  border-radius: 8px;
+html.station .bottom-item .bn-svg,
+html.station .bn-more-item .nav-plate,
+html.station .bottom-item .nav-plate {
+  background: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  width: auto;
+  height: auto;
+  flex: 0 0 auto;
+  border-radius: 0;
   display: grid;
   place-items: center;
 }
-/* Filled duotone: a tinted body plus a heavy outline, in the spirit of the
-   coloured v1 marks (a house, a compass, a tank) rather than a hairline. */
-html.station .nav-plate,
-html.station .bn-more-item .nav-plate,
-html.station .bottom-item .nav-plate {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  background-color: #f4efe4 !important;
-  background-image: linear-gradient(180deg, #fffdf8, #e4d3b0) !important;
-}
-html.station .nav-plate img.illu,
-html.station .bn-more-item .nav-plate img.illu,
-html.station .bottom-item .nav-plate img.illu {
-  width: 32px;
-  height: 32px;
+html.station .nav-item > img.illu,
+html.station .bn-more-item > img.illu,
+html.station .bottom-item > img.illu,
+html.station .home-action > img.illu {
+  width: 24px;
+  height: 24px;
   display: block;
   object-fit: contain;
+  flex: 0 0 24px;
+}
+html.station .v1-mark {
+  font-size: 22px;
+  line-height: 1;
+  width: auto;
+}
+html.tablet-rail.use-bottom-nav .bottom-item > img.illu,
+html.tablet-rail.use-bottom-nav .bottom-item > .v1-mark {
+  width: 32px;
+  height: 32px;
+  font-size: 32px;
+  line-height: 1;
+  flex: 0 0 32px;
+}
+/* Buttons with no v1 picture: the words carry the colour and the depth.
+   Shadows are 1px and unblurred so a short label stays sharp.
+   Night brass on #0b1218 is about 9:1. Bright bronze on #f4efe4 is about 8:1. */
+html.station .lively-text {
+  display: inline-block;
+  font-weight: 700;
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255,248,230,.28) 0 1px, rgba(255,248,230,0) 1px 3px),
+    linear-gradient(180deg, #fff6dc, #f0d48a 42%, #e0b050);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #f0d48a;
+  text-shadow: 0 1px 0 #6a4514, 0 -1px 0 rgba(255,248,230,.5);
+}
+html.bright.station .lively-text,
+html.station.bright .lively-text {
+  background-image:
+    repeating-linear-gradient(90deg, rgba(42,22,6,.35) 0 1px, rgba(42,22,6,0) 1px 3px),
+    linear-gradient(180deg, #5c320c, #2c1808);
+  color: #3d240c;
+  text-shadow: 0 1px 0 rgba(255,255,255,.9), 0 -1px 0 rgba(44,24,8,.4);
+}
+/* Home tiles keep a dark face in both themes, so the label stays light brass. */
+html.bright.station .home-action .lively-text,
+html.station.bright .home-action .lively-text {
+  background-image:
+    repeating-linear-gradient(90deg, rgba(255,248,230,.28) 0 1px, rgba(255,248,230,0) 1px 3px),
+    linear-gradient(180deg, #fff6dc, #f0d48a 42%, #e0b050);
+  color: #f0d48a;
+  text-shadow: 0 1px 0 #6a4514, 0 -1px 0 rgba(255,248,230,.5);
 }
 html.station .home-action {
   display: inline-flex;

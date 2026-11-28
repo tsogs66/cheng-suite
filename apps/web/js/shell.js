@@ -1462,7 +1462,8 @@
       if (btn) {
         var folded = document.documentElement.classList.contains('nav-collapsed');
         btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
-        btn.textContent = folded ? 'Expand menu' : 'Collapse menu';
+        var label = btn.querySelector('.lively-text') || btn;
+        label.textContent = folded ? 'Expand menu' : 'Collapse menu';
       }
     }catch(_e){}
   }

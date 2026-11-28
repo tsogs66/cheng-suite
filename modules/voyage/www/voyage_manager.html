@@ -2744,7 +2744,9 @@
   }
   .bn-item svg{width:var(--nav-ic); height:var(--nav-ic); stroke:currentColor; fill:none; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0;}
   .bn-item .bn-ic{font-size:var(--nav-ic); line-height:1; flex-shrink:0;}
-  .bn-ic img.illu{width:32px; height:32px; display:block; object-fit:contain;}
+  .bn-ic img.illu{width:26px; height:26px; display:block; object-fit:contain;}
+  .lively-text{display:inline-block;font-weight:700;background-image:repeating-linear-gradient(90deg, rgba(255,248,230,.28) 0 1px, rgba(255,248,230,0) 1px 3px), linear-gradient(180deg, #fff6dc, #f0d48a 42%, #e0b050);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:#f0d48a;text-shadow:0 1px 0 #6a4514, 0 -1px 0 rgba(255,248,230,.5);}
+  html.bright .lively-text{background-image:repeating-linear-gradient(90deg, rgba(42,22,6,.35) 0 1px, rgba(42,22,6,0) 1px 3px), linear-gradient(180deg, #5c320c, #2c1808);color:#3d240c;text-shadow:0 1px 0 rgba(255,255,255,.9), 0 -1px 0 rgba(44,24,8,.4);}
   .bn-item.active{color:var(--brass); background:var(--nav-active-bg);}
   .bn-item:hover{color:var(--paper); border-color:transparent;}
   .bn-item.active:hover{color:var(--brass);}
@@ -6399,31 +6401,31 @@ html.bright .bp-result.bp-result-neg .bp-result-value b{color:#b3261e;}
 
 <nav class="bottom-nav" id="bottomNav" aria-label="Primary">
   <button type="button" class="bn-item active" data-page="summary" aria-label="Summary">
-    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/compass.svg"></span>
+    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/bars.svg"></span>
     <span>Summary</span>
   </button>
   <button type="button" class="bn-item" data-page="entry" aria-label="Log Entry">
-    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/notepad.svg"></span>
+    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/memo.svg"></span>
     <span>Log</span>
   </button>
   <button type="button" class="bn-item" data-page="reports" aria-label="Reports">
-    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/doc.svg"></span>
+    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/page.svg"></span>
     <span>Reports</span>
   </button>
   <button type="button" class="bn-item" data-page="rob" aria-label="ROB">
-    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/pump.svg"></span>
+    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/pump.svg"></span>
     <span>ROB</span>
   </button>
   <button type="button" class="bn-item" data-page="rangetotals" aria-label="Range Totals">
-    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/ruler.svg"></span>
+    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/ruler.svg"></span>
     <span>Totals</span>
   </button>
   <button type="button" class="bn-item" data-page="voyageabstract" aria-label="Voyage Abstract">
-    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/clipboard.svg"></span>
+    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/clipboard.svg"></span>
     <span>Voyage</span>
   </button>
   <button type="button" class="bn-item" data-page="more" aria-label="More">
-    <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/more.svg"></span>
+    <span class="bn-ic" aria-hidden="true"><span class="v1-mark" aria-hidden="true">⋯</span></span>
     <span>More</span>
   </button>
 </nav>
@@ -6434,55 +6436,55 @@ html.bright .bp-result.bp-result-neg .bp-result-value b{color:#b3261e;}
     <div class="bn-more-title">More</div>
     <div class="bn-more-grid">
       <button type="button" class="bn-more-item" data-page="spares">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/tools.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/bolt.svg"></span>
         <span>Spares</span>
       </button>
       <button type="button" class="bn-more-item" data-page="bunkerplan">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/chart.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/chartup.svg"></span>
         <span>Cons Plan</span>
       </button>
       <button type="button" class="bn-more-item" data-page="eca">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/wave.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/wave.svg"></span>
         <span>ECA</span>
       </button>
       <button type="button" class="bn-more-item" data-page="consumption">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/chart.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/watch.svg"></span>
         <span>Cons</span>
       </button>
       <button type="button" class="bn-more-item" data-page="trends">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/chart.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/chartdown.svg"></span>
         <span>Trends</span>
       </button>
       <button type="button" class="bn-more-item" data-page="receipts">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/receipt.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/receipt.svg"></span>
         <span>Receipts</span>
       </button>
       <button type="button" class="bn-more-item" data-page="reference">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/book.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/openbook.svg"></span>
         <span>Reference</span>
       </button>
       <button type="button" class="bn-more-item" data-page="guide">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/info.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/info.svg"></span>
         <span>About</span>
       </button>
       <button type="button" class="bn-more-item" data-page="notes">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/notepad.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/memo.svg"></span>
         <span>Notes</span>
       </button>
       <button type="button" class="bn-more-item" data-page="orb">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/book.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/book.svg"></span>
         <span>e-ORB</span>
       </button>
       <button type="button" class="bn-more-item" data-page="data">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/tools.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/gear.svg"></span>
         <span>Setup</span>
       </button>
       <button type="button" class="bn-more-item" data-page="voyagesetup">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/ship.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/ship.svg"></span>
         <span>Voy Setup</span>
       </button>
       <button type="button" class="bn-more-item" data-page="setup">
-        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/illu/ship.svg"></span>
+        <span class="bn-ic" aria-hidden="true"><img class="illu" alt="" src="/icons/emoji/cabinet.svg"></span>
         <span>Vessel Data</span>
       </button>
     </div>

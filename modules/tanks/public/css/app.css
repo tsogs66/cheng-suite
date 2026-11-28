@@ -332,8 +332,10 @@ body.nav-open {
 html.bright .nav-btn.active { color: #fff8ee; }
 html.prism .nav-btn.active { color: #041618; }
 html.astrolabe .nav-btn.active { color: #0a0c16; }
-.nav-btn .ic { width: 32px; font-size: 18px; text-align: center; opacity: 1; }
-.nav-btn .ic img.illu, .bn-ic img.illu { width: 32px; height: 32px; display: block; object-fit: contain; }
+.nav-btn .ic { width: 26px; font-size: 18px; text-align: center; opacity: 1; }
+.nav-btn .ic img.illu, .bn-ic img.illu { width: 26px; height: 26px; display: block; object-fit: contain; }
+.lively-text { display: inline-block; font-weight: 700; background-image: repeating-linear-gradient(90deg, rgba(255,248,230,.28) 0 1px, rgba(255,248,230,0) 1px 3px), linear-gradient(180deg, #fff6dc, #f0d48a 42%, #e0b050); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: #f0d48a; text-shadow: 0 1px 0 #6a4514, 0 -1px 0 rgba(255,248,230,.5); }
+html.bright .lively-text { background-image: repeating-linear-gradient(90deg, rgba(42,22,6,.35) 0 1px, rgba(42,22,6,0) 1px 3px), linear-gradient(180deg, #5c320c, #2c1808); color: #3d240c; text-shadow: 0 1px 0 rgba(255,255,255,.9), 0 -1px 0 rgba(44,24,8,.4); }
 .nav-group-label {
   font-family: 'Oswald', sans-serif;
   font-size: 12px; text-transform: uppercase; letter-spacing: .1em;

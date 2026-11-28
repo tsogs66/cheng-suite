@@ -1,8 +1,8 @@
 /* Tank Chief — SPA */
 const CATS = [
   { id: 'fuel', label: 'Fuel Oil', icon: 'pump', color: 'var(--fuel)' },
-  { id: 'lube', label: 'Lube Oil', icon: 'can', color: 'var(--lube)' },
-  { id: 'misc', label: 'Misc / Bilge', icon: 'tools', color: 'var(--misc)' },
+  { id: 'lube', label: 'Lube Oil', icon: 'drum', color: 'var(--lube)' },
+  { id: 'misc', label: 'Misc / Bilge', icon: 'wrench', color: 'var(--misc)' },
   { id: 'water', label: 'Fresh Water', icon: 'drop', color: 'var(--water)' },
 ];
 
@@ -582,7 +582,8 @@ function applyBunkerPlanNavVisibility() {
 }
 
 function illu(name) {
-  return '<img class="illu" alt="" src="/icons/illu/' + name + '.svg">';
+  if ('+☰Σ▤⇅'.indexOf(name) >= 0) return name;
+  return '<img class="illu" alt="" src="/icons/emoji/' + name + '.svg">';
 }
 
 function syncBottomNav() {
@@ -630,16 +631,16 @@ function renderMoreNav() {
   };
 
   for (const c of CATS) grid.appendChild(mk(c.id, c.label, c.icon));
-  grid.appendChild(mk('add-tank', 'Add Tank', 'plusdrum'));
-  grid.appendChild(mk('calibration', 'Calibration', 'ruler'));
-  if (bunkerPlanNavAllowed()) grid.appendChild(mk('bunker-plan', 'Bunker Plan', 'chart'));
+  grid.appendChild(mk('add-tank', 'Add Tank', '+'));
+  grid.appendChild(mk('calibration', 'Calibration', '☰'));
+  if (bunkerPlanNavAllowed()) grid.appendChild(mk('bunker-plan', 'Bunker Plan', 'chartup'));
   if (aioBunkeringPlanLink()) {
     const link = document.createElement('button');
     link.type = 'button';
     link.className = 'bn-more-item';
     link.dataset.aioLink = 'bunkeringplan';
     link.setAttribute('aria-label', 'Bunkering Plan');
-    link.innerHTML = '<span class="bn-ic" aria-hidden="true">' + illu('pump') + '</span><span>Bunkering Plan</span>';
+    link.innerHTML = '<span class="bn-ic" aria-hidden="true">' + illu('chartup') + '</span><span>Bunkering Plan</span>';
     link.onclick = () => {
       closeMoreSheet();
       if (!openInAioShell('bunkeringplan')) showToast('Open Bunkering Plan from the ChEng AIO menu');
@@ -647,13 +648,13 @@ function renderMoreNav() {
     grid.appendChild(link);
   }
   if (bunkerConsumptionNavAllowed()) {
-    grid.appendChild(mk('bunker-consumption', 'Cons.', 'chart'));
+    grid.appendChild(mk('bunker-consumption', 'Cons.', 'chartup'));
   }
-  grid.appendChild(mk('vcf-wcf', 'VCF/WCF', 'calc'));
-  grid.appendChild(mk('iso8217', 'ISO 8217', 'spec'));
-  if (!isAioEmbedded()) grid.appendChild(mk('setup', 'Setup', 'ship'));
-  grid.appendChild(mk('settings', 'Backup', 'box'));
-  if (!isAioEmbedded()) grid.appendChild(mk('notes', 'Notes', 'notepad'));
+  grid.appendChild(mk('vcf-wcf', 'VCF/WCF', 'Σ'));
+  grid.appendChild(mk('iso8217', 'ISO 8217', '▤'));
+  if (!isAioEmbedded()) grid.appendChild(mk('setup', 'Setup', 'gear'));
+  grid.appendChild(mk('settings', 'Backup', '⇅'));
+  if (!isAioEmbedded()) grid.appendChild(mk('notes', 'Notes', 'memo'));
   grid.appendChild(mk('about', 'About', 'info'));
   host.appendChild(grid);
 
@@ -1128,20 +1129,20 @@ function renderNav() {
   }
 
   group('Summary', (body) => {
-    body.appendChild(mk('dashboard', 'Summary', 'drum'));
+    body.appendChild(mk('dashboard', 'Summary', 'bars'));
   });
 
   group('Tanks', (body) => {
     for (const c of CATS) body.appendChild(mk(c.id, c.label, c.icon));
-    body.appendChild(mk('add-tank', 'Add Tank', 'plusdrum'));
-    body.appendChild(mk('calibration', 'Calibration DB', 'ruler'));
+    body.appendChild(mk('add-tank', 'Add Tank', '+'));
+    body.appendChild(mk('calibration', 'Calibration DB', '☰'));
   });
 
   group('Fuel Management', (body) => {
     body.appendChild(mk('fuel-report', 'Monitoring', 'pump'));
-    if (bunkerPlanNavAllowed()) body.appendChild(mk('bunker-plan', 'Bunker Plan', 'chart'));
+    if (bunkerPlanNavAllowed()) body.appendChild(mk('bunker-plan', 'Bunker Plan', 'chartup'));
     if (aioBunkeringPlanLink()) {
-      const link = mk('bunker-plan', 'Bunkering Plan', 'pump');
+      const link = mk('bunker-plan', 'Bunkering Plan', 'chartup');
       link.dataset.aioLink = 'bunkeringplan';
       link.onclick = () => {
         if (topNav) closeTopNavMenus();
@@ -1149,22 +1150,22 @@ function renderNav() {
       };
       body.appendChild(link);
     }
-    if (bunkerConsumptionNavAllowed()) body.appendChild(mk('bunker-consumption', 'Bunker Consumption', 'chart'));
-    body.appendChild(mk('bunker-after', 'Bunkering', 'pump'));
-    body.appendChild(mk('bunker-summary', 'Bunker Summary', 'doc'));
-    body.appendChild(mk('sounding-card', 'Sounding Card', 'card'));
-    body.appendChild(mk('report', 'Voyage Report', 'doc'));
+    if (bunkerConsumptionNavAllowed()) body.appendChild(mk('bunker-consumption', 'Bunker Consumption', 'chartup'));
+    body.appendChild(mk('bunker-after', 'Bunkering', 'inbox'));
+    body.appendChild(mk('bunker-summary', 'Bunker Summary', 'tabs'));
+    body.appendChild(mk('sounding-card', 'Sounding Card', 'cards'));
+    body.appendChild(mk('report', 'Voyage Report', 'clipboard'));
   });
 
   group('Reference', (body) => {
-    body.appendChild(mk('vcf-wcf', 'VCF / WCF Calc', 'calc'));
-    body.appendChild(mk('iso8217', 'ISO 8217 Specs', 'spec'));
+    body.appendChild(mk('vcf-wcf', 'VCF / WCF Calc', 'Σ'));
+    body.appendChild(mk('iso8217', 'ISO 8217 Specs', '▤'));
   });
 
   group('System', (body) => {
-    if (!isAioEmbedded()) body.appendChild(mk('setup', 'Vessel Setup', 'ship'));
-    body.appendChild(mk('settings', 'Backup / Sync', 'box'));
-    if (!isAioEmbedded()) body.appendChild(mk('notes', 'Notes', 'notepad'));
+    if (!isAioEmbedded()) body.appendChild(mk('setup', 'Vessel Setup', 'gear'));
+    body.appendChild(mk('settings', 'Backup / Sync', '⇅'));
+    if (!isAioEmbedded()) body.appendChild(mk('notes', 'Notes', 'memo'));
     body.appendChild(mk('about', 'About', 'info'));
   });
 
