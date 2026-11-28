@@ -243,6 +243,10 @@
     for (const key of ENGINE_KEYS) {
       if (s[key] != null && s[key] !== '') patch[key] = s[key];
     }
+    for (const key of ['grossTonnage', 'netTonnage', 'auxPowerKw']) {
+      if (s[key] != null && s[key] !== '') patch[key] = s[key];
+    }
+    if (orb.masterName) patch.master = String(orb.masterName).trim();
     return patch;
   }
 
@@ -524,11 +528,16 @@
       setup.flag = vessel.flag || '';
       setup.company = vessel.company || vessel.owner || '';
       setup.dwt = vessel.dwt !== '' && vessel.dwt != null ? vessel.dwt : setup.dwt;
-      if (!setup.orb) setup.orb = {};
+      for (const key of ['grossTonnage', 'netTonnage', 'auxPowerKw']) {
+        if (vessel[key] != null && vessel[key] !== '') setup[key] = vessel[key];
+      }
+      if (!setup.orb || typeof setup.orb !== 'object') setup.orb = {};
       if (vessel.callSign) setup.orb.callSign = vessel.callSign;
       if (vessel.name) setup.orb.shipName = vessel.name;
       if (vessel.imo) setup.orb.imo = vessel.imo;
       if (vessel.flag) setup.orb.flag = vessel.flag;
+      if (vessel.grossTonnage != null && vessel.grossTonnage !== '') setup.orb.gt = vessel.grossTonnage;
+      if (vessel.master) setup.orb.masterName = String(vessel.master).trim();
       for (const key of ENGINE_KEYS) {
         if (vessel[key] != null && vessel[key] !== '') setup[key] = vessel[key];
       }
@@ -547,7 +556,10 @@
          so a sheet reprinted after a handover still carries the signature of
          the officer named on it. */
       const chEng = String(vessel.chiefEngineer || '').trim();
-      if (chEng) setup.chEng = chEng;
+      if (chEng) {
+        setup.chEng = chEng;
+        setup.orb.chiefEng = chEng;
+      }
       const incomingSigs = (vessel.chEngSignatures && typeof vessel.chEngSignatures === 'object')
         ? vessel.chEngSignatures
         : null;
@@ -1502,11 +1514,56 @@
     }
   }
 
+  function finiteOrNull(value) {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** Fill only blank AIO tonnage fields from the matching Voyage setup. Never overwrites a value already stored. */
+  async function identityGapsFromVoyage(vessel) {
+    const gaps = {};
+    if (!vessel) return gaps;
+    let db;
+    try { db = await openVoyageDb(); }
+    catch { return gaps; }
+    try {
+      const meta = await idbGetAll(db, 'meta');
+      const byKey = new Map(meta.map((row) => [row.key, row.value]));
+      const vessels = Array.isArray(byKey.get('vessels')) ? byKey.get('vessels') : [];
+      const imo = normalizeImo(vessel.imo);
+      let reg = vessels.find((v) =>
+        v.id === vessel.voyageRegistryId
+        || v.slug === vessel.voyageSlug
+        || v.slug === vessel.id
+        || v.slug === slugify(vessel.name || '')
+      );
+      if (!reg && imo) {
+        for (const v of vessels) {
+          const setup = byKey.get('setup:' + v.id) || {};
+          if (normalizeImo(setup.imoNo) === imo) { reg = v; break; }
+        }
+      }
+      if (!reg && vessel.name) {
+        const nameKey = normalizeVesselName(vessel.name);
+        reg = vessels.find((v) => normalizeVesselName(v.name) === nameKey) || null;
+      }
+      const setup = reg ? (byKey.get('setup:' + reg.id) || {}) : (byKey.get('setup') || {});
+      for (const key of ['grossTonnage', 'netTonnage', 'auxPowerKw']) {
+        if (finiteOrNull(vessel[key]) == null && finiteOrNull(setup[key]) != null) gaps[key] = finiteOrNull(setup[key]);
+      }
+      return gaps;
+    } finally {
+      try { db.close(); } catch { /* ignore */ }
+    }
+  }
+
   root.ChengProVoyageBridge = {
     readVoyageFleet,
     readHomeSnapshot,
     importIntoChengPro,
     exportVesselToVoyage,
+    identityGapsFromVoyage,
     autoImportIfNeeded,
     readActiveHint,
     writeActiveHint,

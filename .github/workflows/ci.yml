@@ -91,6 +91,9 @@ jobs:
       # real Tesseract and the packages the importer uses.
       - name: Install the PDF import tooling
         run: |
+          # GitHub's Ubuntu image lists a Microsoft apt repo that sometimes
+          # answers 403. That is not a package we need. Drop it so update can finish.
+          sudo find /etc/apt -iname '*microsoft*' -delete || true
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr poppler-utils
           python -m pip install pdfplumber reportlab ocrmypdf pikepdf img2pdf pillow

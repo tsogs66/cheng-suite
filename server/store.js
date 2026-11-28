@@ -403,8 +403,20 @@ function updateVesselDetails(id, patch) {
   setup.company = next.company;
   setup.flag = next.flag;
   setup.dwt = next.dwt;
+  setup.callSign = next.callSign || setup.callSign || '';
+  if (next.grossTonnage != null && next.grossTonnage !== '') setup.grossTonnage = next.grossTonnage;
+  if (next.netTonnage != null && next.netTonnage !== '') setup.netTonnage = next.netTonnage;
+  if (next.auxPowerKw != null && next.auxPowerKw !== '') setup.auxPowerKw = next.auxPowerKw;
+  if (!setup.orb || typeof setup.orb !== 'object') setup.orb = {};
+  if (next.name) setup.orb.shipName = next.name;
+  if (next.imo) setup.orb.imo = next.imo;
+  if (next.callSign) setup.orb.callSign = next.callSign;
+  if (next.flag) setup.orb.flag = next.flag;
+  if (next.grossTonnage != null && next.grossTonnage !== '') setup.orb.gt = next.grossTonnage;
+  if (next.master) setup.orb.masterName = String(next.master).trim();
   if (next.chiefEngineer != null && String(next.chiefEngineer).trim()) {
     setup.chEng = String(next.chiefEngineer).trim();
+    setup.orb.chiefEng = setup.chEng;
   }
   setup.updatedAt = now();
   writeJson(voyagePath(id, 'setup.json'), setup);
