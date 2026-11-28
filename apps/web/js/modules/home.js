@@ -38,9 +38,9 @@ window.ChengProModules.home = {
         </div>
         ${hasVoyage ? `
         <div class="toggle-row" id="homeVoyageActions">
-          <button type="button" class="home-action" id="goVoyageFromHome" title="Open Voyage Chief">Voyage Chief</button>
-          <button type="button" class="home-action" id="goLogEntryFromHome" title="Open Log Entry">Log Entry</button>
-          ${hasConsPlan ? '<button type="button" class="home-action" id="goConsPlanFromHome" title="Open Consumption Plan">Consumption Plan</button>' : ''}
+          <button type="button" class="home-action" id="goVoyageFromHome" title="Open Voyage Chief"><img class="illu" alt="" src="/icons/emoji/compass.svg">Voyage Chief</button>
+          <button type="button" class="home-action" id="goLogEntryFromHome" title="Open Log Entry"><img class="illu" alt="" src="/icons/emoji/memo.svg">Log Entry</button>
+          ${hasConsPlan ? '<button type="button" class="home-action" id="goConsPlanFromHome" title="Open Consumption Plan"><img class="illu" alt="" src="/icons/emoji/chartup.svg">Consumption Plan</button>' : ''}
         </div>
         <div id="voyageProgressViz"></div>
         <div class="home-voyage-strip" id="homeVoyageProgressStrip" hidden></div>` : `
@@ -53,7 +53,7 @@ window.ChengProModules.home = {
           <div class="sub">Opening vs Present from Voyage log</div>
         </div>
         <div class="toggle-row" style="margin-bottom:8px">
-          <button type="button" class="home-action" id="goRobFromHome" title="Open Voyage Chief ROB">ROB</button>
+          <button type="button" class="home-action" id="goRobFromHome" title="Open Voyage Chief ROB"><img class="illu" alt="" src="/icons/emoji/pump.svg">ROB</button>
         </div>
         <div class="gauge-grid" id="fuelDualGauges"></div>
         <div id="ceHomeBand"></div>
@@ -66,9 +66,9 @@ window.ChengProModules.home = {
         </div>
         ${hasTanks ? `
         <div class="toggle-row home-tank-actions">
-          <button type="button" class="home-action" id="goTanksFromHome" title="Open Tank Chief">Tank Chief</button>
-          <button type="button" class="home-action" id="goMonitoringFromHome" title="Open Monitoring">Monitoring</button>
-          ${hasBunkerPlan ? '<button type="button" class="home-action" id="goBunkerPlanFromHome" title="Open Bunkering Plan">Bunkering Plan</button>' : ''}
+          <button type="button" class="home-action" id="goTanksFromHome" title="Open Tank Chief"><img class="illu" alt="" src="/icons/emoji/drum.svg">Tank Chief</button>
+          <button type="button" class="home-action" id="goMonitoringFromHome" title="Open Monitoring"><img class="illu" alt="" src="/icons/emoji/pump.svg">Monitoring</button>
+          ${hasBunkerPlan ? '<button type="button" class="home-action" id="goBunkerPlanFromHome" title="Open Bunkering Plan"><img class="illu" alt="" src="/icons/emoji/inbox.svg">Bunkering Plan</button>' : ''}
           <button type="button" class="home-action" id="rearrangeHomeTanks" title="Drag tanks on this overview only">Rearrange</button>
           <button type="button" class="home-action" id="resetHomeTankLayout" hidden title="Put the overview back to the default port / starboard layout">Reset layout</button>
         </div>
@@ -84,10 +84,10 @@ window.ChengProModules.home = {
         </div>
         <p class="hint">Running hours, SFOC, CII and the latest noon stay on Noon report and Performance. This screen opens them.</p>
         <div class="toggle-row">
-          <button type="button" class="home-action" data-go="performance">Performance</button>
-          <button type="button" class="home-action" data-go="notes">Notes</button>
-          <button type="button" class="home-action" data-go="eorb">e-ORB</button>
-          <button type="button" class="home-action" data-go="backup">Backup &amp; Sync</button>
+          <button type="button" class="home-action" data-go="performance"><span class="lively-text">Performance</span></button>
+          <button type="button" class="home-action" data-go="notes"><img class="illu" alt="" src="/icons/emoji/memo.svg">Notes</button>
+          <button type="button" class="home-action" data-go="eorb"><img class="illu" alt="" src="/icons/emoji/book.svg">e-ORB</button>
+          <button type="button" class="home-action" data-go="backup"><span class="lively-text">Backup &amp; Sync</span></button>
         </div>
       </section>
       </div>

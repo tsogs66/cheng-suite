@@ -45,7 +45,7 @@ for (const page of tankPages) {
 }
 const moreItems = more.match(/<button type="button" class="bn-more-item"[\s\S]*?<\/button>/g) || [];
 assert.ok(moreItems.length > 14, 'More sheet lists the module pages');
-for (const item of moreItems) assert.ok(item.includes('<svg'), 'every More item has an icon');
+for (const item of moreItems) assert.ok(/class="illu"|<svg|class="lively-text"|class="v1-mark"/.test(item), 'every More item has an icon or a textured label');
 const moreKeys = moreItems.map((item) => {
   const mod = (item.match(/data-module="([^"]+)"/) || [])[1] || '';
   const page = (item.match(/data-page="([^"]+)"/) || [])[1] || '';
@@ -67,7 +67,9 @@ assert.ok(css.includes('@media (max-width: 1180px)') && css.includes('.backup-li
 assert.ok(station.includes('.bn-more-item[data-module="voyage"] .nav-plate'), 'More sheet plates use the same colours as the sidebar');
 assert.ok(station.includes('.bottom-item[data-touch="noon"] .bn-svg'), 'noon keeps its own plate');
 assert.ok(!/bottom-item \.bn-svg \{[^}]*background:\s*transparent/.test(station), 'bottom bar icons are not flattened');
-assert.ok(station.includes('linear-gradient(165deg'), 'icon plates keep a bevel');
+assert.ok(station.includes('background: none !important'), 'emoji icons sit on the page without a plate');
+assert.ok(station.includes('html.station .lively-text'), 'labels without a v1 icon are textured');
+assert.ok(station.includes('text-shadow: 0 1px 0 #6a4514'), 'textured labels keep a sharp bevel');
 const pages = fs.readFileSync(path.join(root, 'apps/web/css/station-pages.css'), 'utf8');
 assert.ok(!pages.includes('top: 100px'), 'monitoring titles are not pushed down over the first tanks');
 assert.ok(pages.includes('top: 56px'), 'sheet titles clear the tab strip');
