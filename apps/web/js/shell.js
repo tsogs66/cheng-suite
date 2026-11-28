@@ -616,6 +616,7 @@
       closeSidebar();
     }
     if (bottom) closeSidebar();
+    if (window.ChengNavLayout) window.ChengNavLayout.apply();
   }
 
   /** Full webapp embeds on Android and Windows/Electron — hide AIO chrome around Voyage/Tank. */
@@ -811,6 +812,13 @@
   document.querySelectorAll('.nav-item, .bottom-item').forEach((el) => {
     el.addEventListener('click', () => {
       if (el.dataset.module === 'more' || el.dataset.touch === 'more') {
+        /* Landscape tablet: More widens the rail into the sidebar beside the page.
+           A full-screen sheet was the only thing on screen. */
+        if (document.documentElement.classList.contains('tablet-rail') && window.ChengNavLayout) {
+          window.ChengNavLayout.toggleExpanded();
+          closeMoreSheet();
+          return;
+        }
         toggleMoreSheet();
         return;
       }
@@ -1424,16 +1432,55 @@
 
 
 /* Tablet held sideways: the bar moves from the bottom edge to the left edge (class tablet-rail), so
-   the short side of the screen is not spent on it. Phones and tablets held upright keep the bottom bar. */
+   the short side of the screen is not spent on it. Phones and tablets held upright keep the bottom bar.
+   The expanded menu is the same sidebar, beside the page, and the choice survives reload and rotation. */
 (function(){
+  var EXPAND_KEY = 'chengAioNavExpanded';
+  var COLLAPSE_KEY = 'chengAioNavCollapsed';
+  function read(key){
+    try { return localStorage.getItem(key) === '1'; } catch (_e) { return false; }
+  }
+  function write(key, on){
+    try { localStorage.setItem(key, on ? '1' : '0'); } catch (_e) {}
+  }
+  function coarse(){
+    try { return window.matchMedia('(hover: none) and (pointer: coarse)').matches; } catch (_e) { return false; }
+  }
   function apply(){
     try{
       var w = window.innerWidth || 0, h = window.innerHeight || 0;
       var touch = document.documentElement.classList.contains('use-bottom-nav');
+      var rail = !!(touch && w > h && w >= 600 && w < 1366 && h >= 500);
       /* Left rail on a tall tablet landscape. Short landscape keeps the chip row. */
-      document.documentElement.classList.toggle('tablet-rail', !!(touch && w > h && w >= 600 && w < 1366 && h >= 500));
+      document.documentElement.classList.toggle('tablet-rail', rail);
+      /* A wide touch landscape (iPad Pro, a 2000px tablet) keeps the sidebar, and can fold it to a rail. */
+      var wideTouch = !!(!touch && coarse() && w > h && w >= 1366 && h >= 500);
+      document.documentElement.classList.toggle('can-collapse-nav', wideTouch);
+      document.documentElement.classList.toggle('nav-expanded', rail && read(EXPAND_KEY));
+      document.documentElement.classList.toggle('nav-collapsed', wideTouch && read(COLLAPSE_KEY));
+      var btn = document.getElementById('navCollapse');
+      if (btn) {
+        var folded = document.documentElement.classList.contains('nav-collapsed');
+        btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+        btn.textContent = folded ? 'Expand menu' : 'Collapse menu';
+      }
     }catch(_e){}
   }
+  window.ChengNavLayout = {
+    toggleExpanded: function(){
+      write(EXPAND_KEY, !read(EXPAND_KEY));
+      apply();
+    },
+    apply: apply
+  };
+  document.getElementById('navCollapse')?.addEventListener('click', function(){
+    if (document.documentElement.classList.contains('tablet-rail')) {
+      write(EXPAND_KEY, false);
+    } else {
+      write(COLLAPSE_KEY, !read(COLLAPSE_KEY));
+    }
+    apply();
+  });
   apply();
   window.addEventListener('resize', apply);
   window.addEventListener('orientationchange', function(){ setTimeout(apply, 150); });

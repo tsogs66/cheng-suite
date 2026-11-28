@@ -35,7 +35,7 @@
     st.textContent = '#cheng-zoom{position:fixed;left:8px;bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:2147483000;font:600 13px/1 system-ui,Segoe UI,sans-serif;display:flex;align-items:center;gap:2px;'
       + 'background:rgba(20,32,46,.86);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:20px;padding:2px;box-shadow:0 2px 10px rgba(0,0,0,.35);opacity:.55;transition:opacity .15s;touch-action:manipulation}'
       + '#cheng-zoom:hover,#cheng-zoom:focus-within,#cheng-zoom.open,#cheng-zoom.on{opacity:1}'
-      + '#cheng-zoom button{all:unset;box-sizing:border-box;min-width:34px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:15px;cursor:pointer;padding:0 6px;color:#fff;font-size:16px}'
+      + '#cheng-zoom button{all:unset;box-sizing:border-box;min-width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:20px;cursor:pointer;padding:0 6px;color:#fff;font-size:16px}'
       + '#cheng-zoom button:hover,#cheng-zoom button:focus-visible{background:rgba(255,255,255,.2)}'
       + '#cheng-zoom .cz-more{display:none}#cheng-zoom.open .cz-more{display:inline-flex}'
       + '#cheng-zoom .cz-pct{font-size:12px;min-width:46px}'

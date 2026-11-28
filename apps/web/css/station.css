@@ -99,14 +99,37 @@ html.station .bottom-item .bn-svg {
   box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.5);
 }
 html.station .nav-plate {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  border-radius: 6px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
 }
-html.station .nav-plate svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.75; }
+/* Filled duotone: a tinted body plus a heavy outline, in the spirit of the
+   coloured v1 marks (a house, a compass, a tank) rather than a hairline. */
+html.station .nav-plate svg,
+html.station .bn-more-item svg,
+html.station .bottom-item .bn-svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: currentColor;
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+html.station .nav-plate svg path,
+html.station .bn-more-item svg path,
+html.station .bottom-item .bn-svg path,
+html.station .nav-plate svg circle,
+html.station .bn-more-item svg circle,
+html.station .bottom-item .bn-svg circle {
+  fill: currentColor;
+  fill-opacity: 0.55;
+  stroke: currentColor;
+  stroke-width: 2.35;
+}
 /* Sidebar and More sheet share one plate per program. background-color keeps the bevel. */
 html.station .nav-item[data-module="home"] .nav-plate,
 html.station .bn-more-item[data-module="home"] .nav-plate,

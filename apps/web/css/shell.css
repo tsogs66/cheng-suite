@@ -2401,8 +2401,9 @@ input[type=file]::file-selector-button {
 input[type=file]::file-selector-button:hover { border-color: var(--brass); }
 
 /* ---- Full-screen modules ------------------------------------------------------------------ */
-/* The shell's own menu is hidden here, so it must not leave its space behind (the 84px rail padding was a blank strip). */
-html.aio-fullscreen-embed:not(.aio-embed-menu).tablet-rail.use-bottom-nav .app { padding-left: 0 !important; }
+/* The shell's own menu is hidden here, so it must not leave its space behind (the 84px rail padding was a blank strip).
+   aio-shell-nav keeps that rail on screen, so the padding stays — without it the rail covers the header. */
+html.aio-fullscreen-embed:not(.aio-embed-menu):not(.aio-shell-nav).tablet-rail.use-bottom-nav .app { padding-left: 0 !important; }
 .bn-more-fs[hidden] { display: none !important; }
 /* Consumption Plan, Bunkering Plan and e-ORB keep the main menu: the bar along the bottom, or the rail at the left. */
 html.aio-fullscreen-embed.aio-embed-menu .bottom-nav { display: flex !important; }
@@ -2452,6 +2453,10 @@ html.short-landscape.use-bottom-nav .bottom-nav {
 }
 html.short-landscape.use-bottom-nav { --bottom-h: 0px; }
 html.short-landscape.use-bottom-nav .main { padding-top: 48px; }
+/* The chip row is fixed under the top bar. The watch strip sits in that
+   same band, so it was drawn underneath the chips. */
+html.short-landscape.use-bottom-nav .watch-strip:not([hidden]) { margin-top: 48px; }
+html.short-landscape.use-bottom-nav:has(.watch-strip:not([hidden])) .main { padding-top: 0; }
 
 .home-pane-nav, .home-pane-dots { display: none; }
 html.phone-panes, html.phone-panes body { height: 100%; overflow: hidden; }
@@ -2526,4 +2531,130 @@ html.use-bottom-nav .bn-more-label {
   text-transform: uppercase;
   color: var(--muted);
   padding: 10px 4px 0;
+}
+
+/* Full-screen module + the shell menu still showing.
+   A single 1fr column let the extended menu grow to the width of the tablet
+   and pushed the module below the fold. The menu stays a column; the module
+   stays beside it. The body fills whatever the top bar does not. */
+html.aio-fullscreen-embed.aio-shell-nav:not(.use-bottom-nav) .app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+html.aio-fullscreen-embed.aio-shell-nav:not(.use-bottom-nav) .body {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+}
+html.aio-fullscreen-embed.aio-shell-nav:not(.use-bottom-nav) .sidebar {
+  position: relative;
+  top: auto;
+  align-self: stretch;
+  width: auto;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  overflow: hidden;
+  transform: none;
+}
+html.aio-fullscreen-embed.aio-shell-nav:not(.use-bottom-nav) .sidebar .nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+html.aio-fullscreen-embed.aio-shell-nav:not(.use-bottom-nav) .main,
+html.aio-fullscreen-embed.aio-shell-nav:not(.use-bottom-nav) .main:has(.aio-embed-wrap),
+html.aio-fullscreen-embed.aio-shell-nav:not(.use-bottom-nav) .main:has(.eorb-embed-wrap) {
+  min-height: 0 !important;
+  height: 100%;
+  max-height: 100%;
+}
+
+/* Wide touch landscape: fold the sidebar to an icon rail without covering the page. */
+html.can-collapse-nav.nav-collapsed:not(.use-bottom-nav) .body,
+html.aio-fullscreen-embed.can-collapse-nav.nav-collapsed.aio-shell-nav:not(.use-bottom-nav) .body {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+html.can-collapse-nav.nav-collapsed:not(.use-bottom-nav) .nav-item {
+  justify-content: center;
+  gap: 0;
+  min-height: 44px;
+  padding-left: 6px;
+  padding-right: 6px;
+  font-size: 0;
+}
+html.can-collapse-nav.nav-collapsed:not(.use-bottom-nav) .nav-label,
+html.can-collapse-nav.nav-collapsed:not(.use-bottom-nav) .sidebar-meta .author {
+  display: none;
+}
+html.can-collapse-nav.nav-collapsed:not(.use-bottom-nav) #navCollapse {
+  font-size: 0;
+}
+html.can-collapse-nav.nav-collapsed:not(.use-bottom-nav) #navCollapse::before {
+  content: "›";
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* Landscape tablet under 1366: More opens this sidebar beside the page.
+   The bottom rail steps aside so the two menus are not stacked. */
+html.tablet-rail.nav-expanded.use-bottom-nav .bottom-nav { display: none !important; }
+html.tablet-rail.nav-expanded.use-bottom-nav .bn-more-sheet,
+html.tablet-rail.nav-expanded.use-bottom-nav .bn-more-sheet.open { display: none !important; }
+html.tablet-rail.nav-expanded.use-bottom-nav .sidebar,
+html.aio-fullscreen-embed.aio-shell-nav.tablet-rail.nav-expanded.use-bottom-nav .sidebar {
+  display: flex !important;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 260px;
+  height: 100dvh;
+  max-height: 100dvh;
+  transform: none !important;
+  z-index: 45;
+  overflow: hidden;
+}
+html.tablet-rail.nav-expanded.use-bottom-nav .sidebar .nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+html.tablet-rail.nav-expanded.use-bottom-nav .app,
+html.aio-fullscreen-embed.aio-shell-nav.tablet-rail.nav-expanded.use-bottom-nav .app {
+  padding-left: calc(260px + env(safe-area-inset-left, 0px)) !important;
+}
+html.aio-fullscreen-embed.aio-shell-nav.tablet-rail.use-bottom-nav:not(.nav-expanded) .app {
+  padding-left: calc(84px + env(safe-area-inset-left, 0px)) !important;
+}
+
+/* The page-zoom control is fixed to the left edge. On a sidebar or rail it sat on the last menu button. */
+html.aio-shell-nav:not(.use-bottom-nav) #cheng-zoom { left: 228px !important; }
+html.can-collapse-nav.nav-collapsed:not(.use-bottom-nav) #cheng-zoom { left: 84px !important; }
+html.tablet-rail.use-bottom-nav:not(.nav-expanded) #cheng-zoom { left: 92px !important; }
+html.tablet-rail.nav-expanded.use-bottom-nav #cheng-zoom { left: 268px !important; }
+
+#navCollapse {
+  display: none;
+  min-height: 44px;
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+html.tablet-rail.nav-expanded #navCollapse,
+html.can-collapse-nav:not(.use-bottom-nav) #navCollapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
