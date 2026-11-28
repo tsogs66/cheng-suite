@@ -1,9 +1,9 @@
 /* Tank Chief — SPA */
 const CATS = [
-  { id: 'fuel', label: 'Fuel Oil', icon: '⛽', color: 'var(--fuel)' },
-  { id: 'lube', label: 'Lube Oil', icon: '🛢', color: 'var(--lube)' },
-  { id: 'misc', label: 'Misc / Bilge', icon: '🔧', color: 'var(--misc)' },
-  { id: 'water', label: 'Fresh Water', icon: '💧', color: 'var(--water)' },
+  { id: 'fuel', label: 'Fuel Oil', icon: 'pump', color: 'var(--fuel)' },
+  { id: 'lube', label: 'Lube Oil', icon: 'can', color: 'var(--lube)' },
+  { id: 'misc', label: 'Misc / Bilge', icon: 'tools', color: 'var(--misc)' },
+  { id: 'water', label: 'Fresh Water', icon: 'drop', color: 'var(--water)' },
 ];
 
 const STATE = {
@@ -581,6 +581,10 @@ function applyBunkerPlanNavVisibility() {
   }
 }
 
+function illu(name) {
+  return '<img class="illu" alt="" src="/icons/illu/' + name + '.svg">';
+}
+
 function syncBottomNav() {
   const page = STATE.route.page;
   document.querySelectorAll('#bottomNav .bn-item').forEach((btn) => {
@@ -620,22 +624,22 @@ function renderMoreNav() {
     b.className = 'bn-more-item' + (STATE.route.page === page ? ' active' : '');
     b.dataset.page = page;
     b.setAttribute('aria-label', label);
-    b.innerHTML = `<span class="bn-ic" aria-hidden="true">${icon}</span><span>${label}</span>`;
+    b.innerHTML = `<span class="bn-ic" aria-hidden="true">${illu(icon)}</span><span>${label}</span>`;
     b.onclick = () => { closeMoreSheet(); navigate(page); };
     return b;
   };
 
   for (const c of CATS) grid.appendChild(mk(c.id, c.label, c.icon));
-  grid.appendChild(mk('add-tank', 'Add Tank', '+'));
-  grid.appendChild(mk('calibration', 'Calibration', '☰'));
-  if (bunkerPlanNavAllowed()) grid.appendChild(mk('bunker-plan', 'Bunker Plan', '📈'));
+  grid.appendChild(mk('add-tank', 'Add Tank', 'plusdrum'));
+  grid.appendChild(mk('calibration', 'Calibration', 'ruler'));
+  if (bunkerPlanNavAllowed()) grid.appendChild(mk('bunker-plan', 'Bunker Plan', 'chart'));
   if (aioBunkeringPlanLink()) {
     const link = document.createElement('button');
     link.type = 'button';
     link.className = 'bn-more-item';
     link.dataset.aioLink = 'bunkeringplan';
     link.setAttribute('aria-label', 'Bunkering Plan');
-    link.innerHTML = '<span class="bn-ic" aria-hidden="true">📈</span><span>Bunkering Plan</span>';
+    link.innerHTML = '<span class="bn-ic" aria-hidden="true">' + illu('pump') + '</span><span>Bunkering Plan</span>';
     link.onclick = () => {
       closeMoreSheet();
       if (!openInAioShell('bunkeringplan')) showToast('Open Bunkering Plan from the ChEng AIO menu');
@@ -643,14 +647,14 @@ function renderMoreNav() {
     grid.appendChild(link);
   }
   if (bunkerConsumptionNavAllowed()) {
-    grid.appendChild(mk('bunker-consumption', 'Cons.', '📊'));
+    grid.appendChild(mk('bunker-consumption', 'Cons.', 'chart'));
   }
-  grid.appendChild(mk('vcf-wcf', 'VCF/WCF', 'Σ'));
-  grid.appendChild(mk('iso8217', 'ISO 8217', '▤'));
-  if (!isAioEmbedded()) grid.appendChild(mk('setup', 'Setup', '⚙'));
-  grid.appendChild(mk('settings', 'Backup', '⇅'));
-  if (!isAioEmbedded()) grid.appendChild(mk('notes', 'Notes', '📝'));
-  grid.appendChild(mk('about', 'About', 'ℹ'));
+  grid.appendChild(mk('vcf-wcf', 'VCF/WCF', 'calc'));
+  grid.appendChild(mk('iso8217', 'ISO 8217', 'spec'));
+  if (!isAioEmbedded()) grid.appendChild(mk('setup', 'Setup', 'ship'));
+  grid.appendChild(mk('settings', 'Backup', 'box'));
+  if (!isAioEmbedded()) grid.appendChild(mk('notes', 'Notes', 'notepad'));
+  grid.appendChild(mk('about', 'About', 'info'));
   host.appendChild(grid);
 
   const themeBtn = document.createElement('button');
@@ -1076,7 +1080,7 @@ function renderNav() {
   const mk = (page, label, icon) => {
     const b = document.createElement('button');
     b.className = 'nav-btn' + (STATE.route.page === page ? ' active' : '');
-    b.innerHTML = `<span class="ic">${icon}</span><span>${label}</span>`;
+    b.innerHTML = `<span class="ic">${illu(icon)}</span><span>${label}</span>`;
     b.onclick = () => {
       if (topNav) closeTopNavMenus();
       navigate(page);
@@ -1124,20 +1128,20 @@ function renderNav() {
   }
 
   group('Summary', (body) => {
-    body.appendChild(mk('dashboard', 'Summary', '▦'));
+    body.appendChild(mk('dashboard', 'Summary', 'drum'));
   });
 
   group('Tanks', (body) => {
     for (const c of CATS) body.appendChild(mk(c.id, c.label, c.icon));
-    body.appendChild(mk('add-tank', 'Add Tank', '+'));
-    body.appendChild(mk('calibration', 'Calibration DB', '☰'));
+    body.appendChild(mk('add-tank', 'Add Tank', 'plusdrum'));
+    body.appendChild(mk('calibration', 'Calibration DB', 'ruler'));
   });
 
   group('Fuel Management', (body) => {
-    body.appendChild(mk('fuel-report', 'Monitoring', '🧾'));
-    if (bunkerPlanNavAllowed()) body.appendChild(mk('bunker-plan', 'Bunker Plan', '📈'));
+    body.appendChild(mk('fuel-report', 'Monitoring', 'pump'));
+    if (bunkerPlanNavAllowed()) body.appendChild(mk('bunker-plan', 'Bunker Plan', 'chart'));
     if (aioBunkeringPlanLink()) {
-      const link = mk('bunker-plan', 'Bunkering Plan', '📈');
+      const link = mk('bunker-plan', 'Bunkering Plan', 'pump');
       link.dataset.aioLink = 'bunkeringplan';
       link.onclick = () => {
         if (topNav) closeTopNavMenus();
@@ -1145,23 +1149,23 @@ function renderNav() {
       };
       body.appendChild(link);
     }
-    if (bunkerConsumptionNavAllowed()) body.appendChild(mk('bunker-consumption', 'Bunker Consumption', '📊'));
-    body.appendChild(mk('bunker-after', 'Bunkering', '📥'));
-    body.appendChild(mk('bunker-summary', 'Bunker Summary', '📑'));
-    body.appendChild(mk('sounding-card', 'Sounding Card', '📇'));
-    body.appendChild(mk('report', 'Voyage Report', '📋'));
+    if (bunkerConsumptionNavAllowed()) body.appendChild(mk('bunker-consumption', 'Bunker Consumption', 'chart'));
+    body.appendChild(mk('bunker-after', 'Bunkering', 'pump'));
+    body.appendChild(mk('bunker-summary', 'Bunker Summary', 'doc'));
+    body.appendChild(mk('sounding-card', 'Sounding Card', 'card'));
+    body.appendChild(mk('report', 'Voyage Report', 'doc'));
   });
 
   group('Reference', (body) => {
-    body.appendChild(mk('vcf-wcf', 'VCF / WCF Calc', 'Σ'));
-    body.appendChild(mk('iso8217', 'ISO 8217 Specs', '▤'));
+    body.appendChild(mk('vcf-wcf', 'VCF / WCF Calc', 'calc'));
+    body.appendChild(mk('iso8217', 'ISO 8217 Specs', 'spec'));
   });
 
   group('System', (body) => {
-    if (!isAioEmbedded()) body.appendChild(mk('setup', 'Vessel Setup', '⚙'));
-    body.appendChild(mk('settings', 'Backup / Sync', '⇅'));
-    if (!isAioEmbedded()) body.appendChild(mk('notes', 'Notes', '📝'));
-    body.appendChild(mk('about', 'About', 'ℹ'));
+    if (!isAioEmbedded()) body.appendChild(mk('setup', 'Vessel Setup', 'ship'));
+    body.appendChild(mk('settings', 'Backup / Sync', 'box'));
+    if (!isAioEmbedded()) body.appendChild(mk('notes', 'Notes', 'notepad'));
+    body.appendChild(mk('about', 'About', 'info'));
   });
 
   /* The credit that prints from pages which print themselves — the voyage

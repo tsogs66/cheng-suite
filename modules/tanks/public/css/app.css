@@ -332,7 +332,8 @@ body.nav-open {
 html.bright .nav-btn.active { color: #fff8ee; }
 html.prism .nav-btn.active { color: #041618; }
 html.astrolabe .nav-btn.active { color: #0a0c16; }
-.nav-btn .ic { width: 22px; font-size: 18px; text-align: center; opacity: .85; }
+.nav-btn .ic { width: 32px; font-size: 18px; text-align: center; opacity: 1; }
+.nav-btn .ic img.illu, .bn-ic img.illu { width: 32px; height: 32px; display: block; object-fit: contain; }
 .nav-group-label {
   font-family: 'Oswald', sans-serif;
   font-size: 12px; text-transform: uppercase; letter-spacing: .1em;

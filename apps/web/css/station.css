@@ -108,27 +108,32 @@ html.station .nav-plate {
 }
 /* Filled duotone: a tinted body plus a heavy outline, in the spirit of the
    coloured v1 marks (a house, a compass, a tank) rather than a hairline. */
-html.station .nav-plate svg,
-html.station .bn-more-item svg,
-html.station .bottom-item .bn-svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  fill: currentColor;
-  stroke-width: 2.2;
-  stroke-linejoin: round;
-  stroke-linecap: round;
+html.station .nav-plate,
+html.station .bn-more-item .nav-plate,
+html.station .bottom-item .nav-plate {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  background-color: #f4efe4 !important;
+  background-image: linear-gradient(180deg, #fffdf8, #e4d3b0) !important;
 }
-html.station .nav-plate svg path,
-html.station .bn-more-item svg path,
-html.station .bottom-item .bn-svg path,
-html.station .nav-plate svg circle,
-html.station .bn-more-item svg circle,
-html.station .bottom-item .bn-svg circle {
-  fill: currentColor;
-  fill-opacity: 0.55;
-  stroke: currentColor;
-  stroke-width: 2.35;
+html.station .nav-plate img.illu,
+html.station .bn-more-item .nav-plate img.illu,
+html.station .bottom-item .nav-plate img.illu {
+  width: 32px;
+  height: 32px;
+  display: block;
+  object-fit: contain;
+}
+html.station .home-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+html.station .home-action img.illu {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
 }
 /* Sidebar and More sheet share one plate per program. background-color keeps the bevel. */
 html.station .nav-item[data-module="home"] .nav-plate,

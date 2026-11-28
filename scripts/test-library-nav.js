@@ -45,7 +45,7 @@ for (const page of tankPages) {
 }
 const moreItems = more.match(/<button type="button" class="bn-more-item"[\s\S]*?<\/button>/g) || [];
 assert.ok(moreItems.length > 14, 'More sheet lists the module pages');
-for (const item of moreItems) assert.ok(item.includes('<svg'), 'every More item has an icon');
+for (const item of moreItems) assert.ok(/class="illu"|<svg/.test(item), 'every More item has an icon');
 const moreKeys = moreItems.map((item) => {
   const mod = (item.match(/data-module="([^"]+)"/) || [])[1] || '';
   const page = (item.match(/data-page="([^"]+)"/) || [])[1] || '';
